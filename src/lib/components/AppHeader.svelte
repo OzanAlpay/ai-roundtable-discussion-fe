@@ -48,8 +48,8 @@
   }
   .brand {
     margin: 0;
-    font-size: clamp(1.35rem, 2vw, 1.8rem);
-    font-weight: 750;
+    font-size: clamp(1.45rem, 2.4vw, 2rem);
+    font-weight: 800;
     letter-spacing: -0.02em;
   }
   .demo {

@@ -30,10 +30,8 @@
     }
   })
 
-  const setupLocked = $derived(
-    controller.viewPhase === 'viewing' &&
-      !!controller.snapshot &&
-      !isTerminalStatus(controller.snapshot.status),
+  const showSetup = $derived(
+    controller.viewPhase === 'setup' || controller.viewPhase === 'submitting',
   )
 
   const elapsedLabel = $derived.by(() => {
@@ -64,61 +62,64 @@
     onRetry={() => void controller.retryConnection()}
   />
 
-  {#if controller.reloadNotice && controller.viewPhase === 'setup'}
+  {#if controller.reloadNotice && showSetup}
     <p class="notice">{controller.reloadNotice}</p>
   {/if}
 
   <div class="layout" id="main">
-    <div class="main-col">
-      <RoundtableRoom
-        config={controller.draft}
-        snapshot={controller.snapshot}
-        catalog={controller.catalog}
-        selectedParticipantId={controller.selectedParticipantId}
-        onSelect={(id) => controller.selectParticipant(id)}
-      />
-      <RoundProgress snapshot={controller.snapshot} {elapsedLabel} />
-      <div class="toolbar">
-        <RoundControls
-          snapshot={controller.snapshot}
-          pending={controller.pendingCommand === 'cancel'}
-          onStop={() => void controller.sendCommand({ type: 'cancel' })}
-        />
-        <ExportMenu snapshot={controller.snapshot} />
-      </div>
-      <TranscriptTabs
-        snapshot={controller.snapshot}
-        selectedTab={controller.selectedTab}
-        onTab={(tab) => controller.setTab(tab)}
-      />
-    </div>
+    <RoundtableRoom
+      config={controller.draft}
+      snapshot={controller.snapshot}
+      catalog={controller.catalog}
+      selectedParticipantId={controller.selectedParticipantId}
+      onSelect={(id) => controller.selectParticipant(id)}
+    />
 
-    <div class="side-col">
-      {#if controller.catalog}
-        <SetupPanel
-          catalog={controller.catalog}
-          draft={controller.draft}
-          scenarios={controller.scenarios}
-          scenarioId={controller.demoScenarioId}
-          issues={controller.fieldErrors}
-          disabled={setupLocked}
-          submitting={controller.viewPhase === 'submitting'}
-          createError={controller.createError}
-          draftMessage={controller.draftMessage}
-          mode={controller.mode}
-          onDraft={(m) => controller.updateDraft(m)}
-          onScenario={(id) => controller.setScenario(id)}
-          onAdd={() => controller.addParticipant()}
-          onRemove={(id) => controller.removeParticipant(id)}
-          onStart={() => void controller.start()}
-          onClearDraft={() => controller.clearSavedDraft()}
+    {#if showSetup}
+      <div class="setup-slot">
+        {#if controller.catalog}
+          <SetupPanel
+            catalog={controller.catalog}
+            draft={controller.draft}
+            scenarios={controller.scenarios}
+            scenarioId={controller.demoScenarioId}
+            issues={controller.fieldErrors}
+            disabled={false}
+            submitting={controller.viewPhase === 'submitting'}
+            createError={controller.createError}
+            draftMessage={controller.draftMessage}
+            mode={controller.mode}
+            onDraft={(m) => controller.updateDraft(m)}
+            onScenario={(id) => controller.setScenario(id)}
+            onAdd={() => controller.addParticipant()}
+            onRemove={(id) => controller.removeParticipant(id)}
+            onStart={() => void controller.start()}
+            onClearDraft={() => controller.clearSavedDraft()}
+          />
+        {:else if controller.createError}
+          <p class="error" role="alert">{controller.createError}</p>
+        {:else}
+          <p>Loading catalog…</p>
+        {/if}
+      </div>
+    {:else}
+      <section class="run-slot" aria-label="Meeting run">
+        <RoundProgress snapshot={controller.snapshot} {elapsedLabel} />
+        <div class="toolbar">
+          <RoundControls
+            snapshot={controller.snapshot}
+            pending={controller.pendingCommand === 'cancel'}
+            onStop={() => void controller.sendCommand({ type: 'cancel' })}
+          />
+          <ExportMenu snapshot={controller.snapshot} />
+        </div>
+        <TranscriptTabs
+          snapshot={controller.snapshot}
+          selectedTab={controller.selectedTab}
+          onTab={(tab) => controller.setTab(tab)}
         />
-      {:else if controller.createError}
-        <p class="error" role="alert">{controller.createError}</p>
-      {:else}
-        <p>Loading catalog…</p>
-      {/if}
-    </div>
+      </section>
+    {/if}
   </div>
 </div>
 
@@ -159,20 +160,20 @@
     top: 0.5rem;
   }
   .app {
-    max-width: 1400px;
+    max-width: 1100px;
     margin: 0 auto;
-    padding: 1rem;
+    padding: 1rem 1rem 2rem;
     display: grid;
     gap: 0.85rem;
   }
   .layout {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(320px, 360px);
+    grid-template-columns: 1fr;
     gap: 1rem;
     align-items: start;
   }
-  .main-col,
-  .side-col {
+  .setup-slot,
+  .run-slot {
     display: grid;
     gap: 0.85rem;
   }
@@ -193,10 +194,5 @@
   }
   .error {
     color: var(--danger);
-  }
-  @media (max-width: 1023px) {
-    .layout {
-      grid-template-columns: 1fr;
-    }
   }
 </style>

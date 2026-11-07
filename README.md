@@ -31,7 +31,9 @@ Open the printed local URL (default `http://localhost:5173`). Leave **VITE_ROUND
 
 ## Demo scenarios
 
-Use **Demo scenarios** in the setup column (mock mode only):
+The office always shows **8 chairs**; 2–6 agents occupy a pleasant subset. Meeting setup sits **below** the room and hides after start.
+
+Use **Demo scenarios** in the setup panel (mock mode only):
 
 - Healthy two rounds — mind-change + preserved disagreement
 - Three-round reversal

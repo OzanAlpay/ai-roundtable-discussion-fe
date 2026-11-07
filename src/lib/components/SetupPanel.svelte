@@ -163,11 +163,24 @@
     display: grid;
     gap: 0.85rem;
     align-content: start;
-    padding: 1rem;
-    background: var(--surface);
+    padding: 1rem 1.1rem 1.15rem;
+    background: color-mix(in srgb, var(--surface) 94%, #e8f3ef);
     border: 1px solid var(--line);
     border-radius: var(--radius-card);
     box-shadow: var(--shadow-soft);
+  }
+  .participants {
+    display: grid;
+    gap: 0.65rem;
+    grid-template-columns: 1fr;
+  }
+  @media (min-width: 900px) {
+    .participants {
+      grid-template-columns: 1fr 1fr;
+    }
+    .participants > .row {
+      grid-column: 1 / -1;
+    }
   }
   header h2 {
     margin: 0;
@@ -198,10 +211,6 @@
     gap: 0.5rem;
     font-size: 0.8rem;
     color: var(--muted);
-  }
-  .participants {
-    display: grid;
-    gap: 0.65rem;
   }
   .row {
     display: flex;

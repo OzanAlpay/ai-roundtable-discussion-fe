@@ -1,24 +1,24 @@
 :root {
-  --canvas: #f6f3ed;
-  --surface: #ffffff;
-  --ink: #23313a;
-  --muted: #59636d;
-  --line: #d8dcd8;
-  --accent: #3b6c59;
+  --canvas: #efe6d8;
+  --surface: #fffaf2;
+  --ink: #2c241c;
+  --muted: #6a5f52;
+  --line: #d8cbb8;
+  --accent: #2f6f62;
   --accent-ink: #ffffff;
-  --wood: #d9ad7c;
-  --wood-edge: #bb8653;
-  --sage: #dce9dc;
-  --lavender: #e8e1f2;
-  --peach: #f8e2d4;
-  --sky: #dceaf4;
+  --wood: #d7a56f;
+  --wood-edge: #b57a45;
+  --sage: #7fbf92;
+  --lavender: #a996d6;
+  --peach: #e3a07a;
+  --sky: #7eb6d4;
   --danger: #a63838;
   --warning: #8a5a12;
-  --radius-card: 16px;
-  --radius-control: 10px;
-  --shadow-soft: 0 10px 30px rgba(35, 49, 58, 0.08);
-  --font: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
-  --focus: 0 0 0 3px rgba(59, 108, 89, 0.35);
+  --radius-card: 20px;
+  --radius-control: 12px;
+  --shadow-soft: 0 14px 34px rgba(74, 58, 42, 0.12);
+  --font: 'Nunito', 'Trebuchet MS', 'Segoe UI', sans-serif;
+  --focus: 0 0 0 3px rgba(47, 111, 98, 0.35);
 }
 
 *,
@@ -32,8 +32,9 @@ body {
   margin: 0;
   min-height: 100%;
   background:
-    radial-gradient(1200px 600px at 10% -10%, #fff8ee 0%, transparent 55%),
-    radial-gradient(900px 500px at 100% 0%, #eef4f0 0%, transparent 50%),
+    radial-gradient(1100px 520px at 12% -8%, #fff4e4 0%, transparent 55%),
+    radial-gradient(900px 480px at 100% 0%, #dcefe8 0%, transparent 48%),
+    radial-gradient(700px 400px at 50% 100%, rgba(212, 168, 110, 0.18), transparent 55%),
     var(--canvas);
   color: var(--ink);
   font-family: var(--font);

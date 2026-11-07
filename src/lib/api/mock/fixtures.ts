@@ -8,8 +8,8 @@ export function createDefaultParticipants(): ParticipantConfig[] {
     {
       id: 'p-architect',
       name: 'Architect',
-      providerId: 'demo-copilot',
-      modelId: 'demo-gpt',
+      providerId: 'demo-openai',
+      modelId: 'demo-gpt-fast',
       roleLabel: 'Architect',
       roleInstruction: DEFAULT_ROLE_INSTRUCTIONS.Architect,
       accent: 'sage',
@@ -28,8 +28,8 @@ export function createDefaultParticipants(): ParticipantConfig[] {
     {
       id: 'p-pragmatist',
       name: 'Pragmatist',
-      providerId: 'demo-openai',
-      modelId: 'demo-gpt-fast',
+      providerId: 'demo-grok',
+      modelId: 'demo-grok-fast',
       roleLabel: 'Pragmatist',
       roleInstruction: DEFAULT_ROLE_INSTRUCTIONS.Pragmatist,
       accent: 'peach',
