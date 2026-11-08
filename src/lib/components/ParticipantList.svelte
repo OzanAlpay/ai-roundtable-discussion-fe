@@ -20,8 +20,12 @@
   {#each participants as p (p.id)}
     {@const slot = round?.slots.find((s) => s.participantId === p.id) ?? null}
     {@const label = snapshot?.participantLabels.find((l) => l.participantId === p.id)}
-    {@const providerName = label?.providerName ?? catalog?.providers.find((x) => x.id === p.providerId)?.name ?? p.providerId}
-    {@const modelName = label?.modelName ?? catalog?.models.find((x) => x.id === p.modelId)?.name ?? p.modelId}
+    {@const providerName =
+      label?.providerName ??
+      catalog?.providers.find((x) => x.id === p.providerId)?.name ??
+      p.providerId}
+    {@const modelName =
+      label?.modelName ?? catalog?.models.find((x) => x.id === p.modelId)?.name ?? p.modelId}
     {@const iconKey = catalog?.providers.find((x) => x.id === p.providerId)?.iconKey ?? 'neutral'}
     <li>
       <button
@@ -31,9 +35,15 @@
         onclick={() => onSelect(p.id)}
       >
         <span class="name">{p.name}</span>
-        <span class="role">{p.roleLabel}</span>
+        {#if p.roleLabel !== p.name}<span class="role">{p.roleLabel}</span>{/if}
         <ProviderBadge {iconKey} name={providerName} {modelName} />
-        <span class="status">{snapshot ? statusLabel(slot, snapshot.status) : 'Waiting'}</span>
+        <span class="status"
+          >{snapshot?.excludedParticipantIds.includes(p.id)
+            ? 'Excluded'
+            : snapshot
+              ? statusLabel(slot, snapshot.status)
+              : 'Ready to join'}</span
+        >
       </button>
     </li>
   {/each}
@@ -51,7 +61,8 @@
     width: 100%;
     text-align: left;
     display: grid;
-    gap: 0.2rem;
+    gap: 0.35rem;
+    justify-items: start;
     padding: 0.7rem 0.8rem;
     min-height: 44px;
     border-radius: 12px;
@@ -69,6 +80,6 @@
   .role,
   .status {
     color: var(--muted);
-    font-size: 0.85rem;
+    font-size: 0.75rem;
   }
 </style>

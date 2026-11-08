@@ -12,9 +12,7 @@
 
   let { catalog, providerId, modelId, disabled = false, onProvider, onModel }: Props = $props()
 
-  const models = $derived(
-    catalog.models.filter((m) => m.providerId === providerId),
-  )
+  const models = $derived(catalog.models.filter((m) => m.providerId === providerId))
 </script>
 
 <div class="row">

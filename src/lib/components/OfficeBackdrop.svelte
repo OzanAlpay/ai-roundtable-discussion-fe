@@ -1,353 +1,112 @@
-<script lang="ts">
-  interface Props {
-    meetingState: 'idle' | 'active' | 'blocked' | 'completed'
-    questionExcerpt: string
-    roundLabel: string
-    progressLabel: string
-    tableWidthFactor?: number
-  }
-  let {
-    meetingState,
-    questionExcerpt,
-    roundLabel,
-    progressLabel,
-    tableWidthFactor = 1,
-  }: Props = $props()
-</script>
-
-<div class="backdrop" data-state={meetingState} aria-hidden="true">
-  <div class="wall">
-    <div class="window left"></div>
-    <div class="window right"></div>
-    <div class="shelf"></div>
-  </div>
-
-  <div class="board">
-    <div class="board-frame">
-      <div class="board-title">Meeting board</div>
-      <div class="board-q">{questionExcerpt}</div>
-      <div class="board-meta">{roundLabel} · {progressLabel}</div>
-      <div class="markers">
-        <span class="m red"></span>
-        <span class="m blue"></span>
-        <span class="m green"></span>
-      </div>
-    </div>
-  </div>
-
-  <div class="plant">
-    <div class="leaf a"></div>
-    <div class="leaf b"></div>
-    <div class="leaf c"></div>
-    <div class="pot"></div>
-  </div>
-
-  <div class="floor">
-    <div class="rug"></div>
-  </div>
-
-  <div class="pendant">
-    <div class="cord"></div>
-    <div class="shade"></div>
-  </div>
-  <div class="light"></div>
-
-  <div class="table" style={`--tw:${tableWidthFactor}`}>
-    <div class="table-shadow"></div>
-    <div class="table-edge"></div>
-    <div class="table-top">
-      <div class="grain"></div>
-      <div class="inlay"></div>
-    </div>
-  </div>
-</div>
+<svg class="backdrop" viewBox="0 0 1000 510" preserveAspectRatio="none" aria-hidden="true">
+  <defs>
+    <linearGradient id="room-wall" x2="0" y2="1"
+      ><stop stop-color="#273752" /><stop offset="1" stop-color="#3b5068" /></linearGradient
+    >
+    <linearGradient id="room-floor" x2="0" y2="1"
+      ><stop stop-color="#42556e" /><stop offset="1" stop-color="#25354c" /></linearGradient
+    >
+    <linearGradient id="window-space" x2="1" y2="1"
+      ><stop stop-color="#13243d" /><stop offset="1" stop-color="#263859" /></linearGradient
+    >
+    <linearGradient id="glass" x2="0" y2="1"
+      ><stop stop-color="#a5e6df" /><stop offset="1" stop-color="#7db7bb" /></linearGradient
+    >
+  </defs>
+  <rect width="1000" height="510" fill="url(#room-wall)" />
+  <path d="M0 180 Q500 252 1000 180 V510 H0Z" fill="url(#room-floor)" />
+  <path d="M0 180 Q500 252 1000 180" fill="none" stroke="#192a40" stroke-width="12" />
+  <path d="M0 184 Q500 256 1000 184" fill="none" stroke="#6f8a9b" stroke-width="2" opacity=".6" />
+  <g fill="none" stroke="#8696ab" opacity=".13"
+    ><path d="M100 210L-50 510M300 230L220 510M500 238V510M700 230L780 510M900 210L1050 510" /><path
+      d="M0 310H1000M0 400H1000M0 490H1000"
+    /></g
+  >
+  <path
+    d="M36 20H964Q980 20 980 38V140M20 140V38Q20 20 36 20"
+    fill="none"
+    stroke="#7d96b0"
+    stroke-width="2"
+    opacity=".25"
+  />
+  <g transform="translate(48 48)"
+    ><rect width="126" height="108" rx="29" fill="#17273d" stroke="#536a83" stroke-width="6" /><rect
+      x="9"
+      y="9"
+      width="108"
+      height="90"
+      rx="22"
+      fill="url(#window-space)"
+    /><circle cx="87" cy="38" r="18" fill="#7d78b4" /><path
+      d="M68 44Q88 18 101 38"
+      stroke="#aaa3d0"
+      stroke-width="4"
+      fill="none"
+    /><g fill="#b3cedd"
+      ><circle cx="27" cy="27" r="1.5" /><circle cx="45" cy="69" r="2" /><circle
+        cx="96"
+        cy="74"
+        r="1.5"
+      /><circle cx="55" cy="43" r="1" /></g
+    ></g
+  >
+  <g transform="translate(826 48)"
+    ><rect width="126" height="108" rx="29" fill="#17273d" stroke="#536a83" stroke-width="6" /><rect
+      x="9"
+      y="9"
+      width="108"
+      height="90"
+      rx="22"
+      fill="url(#window-space)"
+    /><path d="M13 85Q60 40 114 69V90Q114 99 104 99H23Q13 99 13 85" fill="#426b87" /><path
+      d="M14 86Q58 52 114 71"
+      stroke="#90bdc8"
+      stroke-width="2"
+      fill="none"
+    /><g fill="#d0e5e9"
+      ><circle cx="32" cy="31" r="2" /><circle cx="87" cy="24" r="1" /><circle
+        cx="71"
+        cy="44"
+        r="1.5"
+      /></g
+    ></g
+  >
+  <rect x="410" y="17" width="180" height="7" rx="3.5" fill="#b0d8d7" opacity=".65" />
+  <g transform="translate(45 395)"
+    ><ellipse cx="30" cy="65" rx="34" ry="9" fill="#15263b" opacity=".4" /><path
+      d="M14 25H48L43 63H20Z"
+      fill="#b6b2b1"
+    /><path d="M30 30V-26" stroke="#6e9e93" stroke-width="4" /><path
+      d="M30 7Q-6 1 3-25Q27-24 30 7M31-1Q63-8 53-35Q32-30 31-1M30-17Q12-40 31-53Q48-39 30-17"
+      fill="#69b6a3"
+    /></g
+  >
+  <g transform="translate(905 398)"
+    ><rect width="53" height="55" rx="7" fill="#202f44" stroke="#5b7085" stroke-width="2" /><path
+      d="M8 13H45M8 25H45M8 37H45"
+      stroke="#405771"
+      stroke-width="4"
+    /><circle cx="43" cy="45" r="2" fill="#a3dfba" /></g
+  >
+  <text x="92" y="485" font-family="monospace" font-size="9" letter-spacing="3" fill="#9aaec4"
+    >ROUNDTABLE / ORBITAL OFFICE</text
+  ><text
+    x="920"
+    y="485"
+    text-anchor="end"
+    font-family="monospace"
+    font-size="9"
+    letter-spacing="2"
+    fill="#9aaec4">01</text
+  >
+</svg>
 
 <style>
   .backdrop {
     position: absolute;
     inset: 0;
-    overflow: hidden;
-    border-radius: var(--radius-card);
-    background: linear-gradient(180deg, #f3ebe0 0%, #eadfce 42%, #d9cbb6 100%);
-  }
-  .wall {
-    position: absolute;
-    inset: 0 0 36% 0;
-    background:
-      linear-gradient(180deg, rgba(255, 255, 255, 0.22), transparent 40%),
-      repeating-linear-gradient(
-        90deg,
-        rgba(74, 58, 42, 0.04) 0 3px,
-        transparent 3px 36px
-      ),
-      linear-gradient(180deg, #efe4d4, #e6d8c4);
-  }
-  .window {
-    position: absolute;
-    top: 10%;
-    width: 11%;
-    height: 28%;
-    border-radius: 10px;
-    border: 3px solid #c4b29a;
-    background:
-      linear-gradient(160deg, rgba(255, 255, 255, 0.55), transparent 40%),
-      linear-gradient(180deg, #9ec8de, #cfe6f2);
-    box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.35);
-  }
-  .window.left {
-    left: 5%;
-  }
-  .window.right {
-    right: 5%;
-  }
-  .window::after {
-    content: '';
-    position: absolute;
-    inset: 0;
-    background:
-      linear-gradient(#c4b29a, #c4b29a) center/2px 100% no-repeat,
-      linear-gradient(#c4b29a, #c4b29a) center/100% 2px no-repeat;
-    opacity: 0.7;
-  }
-  .shelf {
-    position: absolute;
-    right: 7%;
-    bottom: 8%;
-    width: 9%;
-    height: 4px;
-    background: #b8956d;
-    border-radius: 2px;
-    box-shadow: 0 8px 0 -3px #8f6d48;
-  }
-  .board {
-    position: absolute;
-    top: 7%;
-    left: 50%;
-    transform: translateX(-50%);
-    width: min(440px, 68%);
-  }
-  .board-frame {
-    position: relative;
-    background: #f4faf4;
-    border: 3px solid #8fa88f;
-    border-radius: 14px;
-    padding: 0.7rem 0.9rem 0.85rem;
-    box-shadow:
-      inset 0 0 0 5px #e4efe4,
-      0 8px 18px rgba(74, 58, 42, 0.12);
-  }
-  .board-title {
-    font-size: 0.68rem;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-    color: var(--muted);
-    font-weight: 700;
-  }
-  .board-q {
-    font-size: 0.95rem;
-    font-weight: 700;
-    margin-top: 0.2rem;
-    line-height: 1.25;
-  }
-  .board-meta {
-    margin-top: 0.35rem;
-    font-size: 0.78rem;
-    color: var(--accent);
-    font-weight: 600;
-  }
-  .markers {
-    position: absolute;
-    right: 10px;
-    bottom: -10px;
-    display: flex;
-    gap: 4px;
-  }
-  .m {
-    width: 8px;
-    height: 22px;
-    border-radius: 3px;
-  }
-  .m.red {
-    background: #d75a5a;
-  }
-  .m.blue {
-    background: #4f7fb8;
-  }
-  .m.green {
-    background: #4f9a6a;
-  }
-  .plant {
-    position: absolute;
-    left: 5.5%;
-    bottom: 33%;
-    width: 54px;
-    height: 86px;
-  }
-  .pot {
-    position: absolute;
-    bottom: 0;
-    left: 12px;
-    width: 28px;
-    height: 24px;
-    background: linear-gradient(180deg, #d59a78, #b87352);
-    border-radius: 3px 3px 10px 10px;
-    box-shadow: inset 0 3px 0 rgba(255, 255, 255, 0.2);
-  }
-  .leaf {
-    position: absolute;
-    width: 22px;
-    height: 34px;
-    background: linear-gradient(140deg, #7fb989, #4f8f62);
-    border-radius: 80% 0 80% 0;
-  }
-  .leaf.a {
-    left: 4px;
-    bottom: 22px;
-    transform: rotate(-28deg);
-  }
-  .leaf.b {
-    left: 18px;
-    bottom: 28px;
-    transform: rotate(18deg);
-  }
-  .leaf.c {
-    left: 12px;
-    bottom: 40px;
-    width: 18px;
-    height: 26px;
-    transform: rotate(-4deg);
-    background: linear-gradient(140deg, #8fcd98, #5aa06c);
-  }
-  .floor {
-    position: absolute;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    height: 38%;
-    background:
-      repeating-linear-gradient(
-        90deg,
-        rgba(74, 58, 42, 0.05) 0 18px,
-        transparent 18px 36px
-      ),
-      linear-gradient(180deg, #e4d7c4, #d4c3ab);
-  }
-  .rug {
-    position: absolute;
-    left: 50%;
-    bottom: 8%;
-    width: 58%;
-    height: 42%;
-    transform: translateX(-50%);
-    border-radius: 50%;
-    background:
-      radial-gradient(circle at 50% 45%, rgba(79, 143, 162, 0.18), transparent 62%),
-      radial-gradient(circle at 50% 50%, #c9b79a, transparent 70%);
-  }
-  .pendant {
-    position: absolute;
-    left: 50%;
-    top: 34%;
-    transform: translateX(-50%);
-    z-index: 1;
+    width: 100%;
+    height: 100%;
     pointer-events: none;
-  }
-  .cord {
-    width: 3px;
-    height: 28px;
-    margin: 0 auto;
-    background: #8a7460;
-  }
-  .shade {
-    width: 54px;
-    height: 18px;
-    margin: 0 auto;
-    border-radius: 4px 4px 14px 14px;
-    background: linear-gradient(180deg, #f3e2b8, #e0bf74);
-    box-shadow: 0 4px 10px rgba(224, 191, 116, 0.35);
-  }
-  .light {
-    position: absolute;
-    left: 50%;
-    top: 48%;
-    width: 62%;
-    height: 40%;
-    transform: translate(-50%, -50%);
-    border-radius: 50%;
-    pointer-events: none;
-    transition: background 220ms ease, opacity 220ms ease;
-  }
-  .backdrop[data-state='idle'] .light {
-    background: radial-gradient(circle, rgba(255, 236, 190, 0.55), transparent 68%);
-  }
-  .backdrop[data-state='active'] .light {
-    background: radial-gradient(circle, rgba(186, 224, 242, 0.72), transparent 70%);
-  }
-  .backdrop[data-state='blocked'] .light {
-    background: radial-gradient(circle, rgba(255, 196, 160, 0.78), transparent 70%);
-  }
-  .backdrop[data-state='completed'] .light {
-    background: radial-gradient(circle, rgba(186, 226, 186, 0.78), transparent 70%);
-  }
-  .table {
-    position: absolute;
-    left: 50%;
-    top: 58%;
-    width: calc(48% * var(--tw, 1));
-    height: 24%;
-    transform: translate(-50%, -50%);
-  }
-  .table-top {
-    position: absolute;
-    inset: 0;
-    border-radius: 50%;
-    background:
-      radial-gradient(circle at 32% 28%, #f0d2a8, #d7a56f 52%, #b57a45 100%);
-    border: 3px solid #8f5e36;
-    box-shadow: inset 0 0 0 6px rgba(255, 232, 198, 0.22);
-    overflow: hidden;
-  }
-  .grain {
-    position: absolute;
-    inset: 0;
-    background:
-      repeating-radial-gradient(
-        ellipse at 50% 50%,
-        transparent 0 12px,
-        rgba(110, 70, 35, 0.05) 12px 14px
-      );
-    opacity: 0.8;
-  }
-  .inlay {
-    position: absolute;
-    left: 50%;
-    top: 50%;
-    width: 22%;
-    height: 28%;
-    transform: translate(-50%, -50%);
-    border-radius: 50%;
-    border: 2px solid rgba(255, 236, 210, 0.35);
-    background: radial-gradient(circle, rgba(255, 236, 210, 0.2), transparent 70%);
-  }
-  .table-edge {
-    position: absolute;
-    left: 3%;
-    right: 3%;
-    bottom: -7%;
-    height: 20%;
-    border-radius: 50%;
-    background: linear-gradient(180deg, #9a6538, #6f4528);
-    z-index: -1;
-  }
-  .table-shadow {
-    position: absolute;
-    left: 6%;
-    right: 6%;
-    bottom: -20%;
-    height: 28%;
-    border-radius: 50%;
-    background: rgba(74, 58, 42, 0.22);
-    filter: blur(8px);
-    z-index: -2;
   }
 </style>

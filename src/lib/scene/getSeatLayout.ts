@@ -26,14 +26,14 @@ const OCCUPIED_SUBSETS: Record<number, number[]> = {
 
 /** Fixed oval ring. Coordinates are normalized 0–1 within the room stage. */
 const CHAIR_RING: Omit<SeatLayout, 'chairIndex'>[] = [
-  { x: 0.28, y: 0.3, layer: 'back', facing: 'inward', labelAnchor: 'above' },
-  { x: 0.5, y: 0.24, layer: 'back', facing: 'inward', labelAnchor: 'above' },
-  { x: 0.72, y: 0.3, layer: 'back', facing: 'inward', labelAnchor: 'above' },
-  { x: 0.88, y: 0.5, layer: 'side', facing: 'inward', labelAnchor: 'right' },
-  { x: 0.72, y: 0.72, layer: 'front', facing: 'inward', labelAnchor: 'below' },
-  { x: 0.5, y: 0.78, layer: 'front', facing: 'inward', labelAnchor: 'below' },
-  { x: 0.28, y: 0.72, layer: 'front', facing: 'inward', labelAnchor: 'below' },
-  { x: 0.12, y: 0.5, layer: 'side', facing: 'inward', labelAnchor: 'left' },
+  { x: 0.28, y: 0.43, layer: 'back', facing: 'inward', labelAnchor: 'above' },
+  { x: 0.5, y: 0.38, layer: 'back', facing: 'inward', labelAnchor: 'above' },
+  { x: 0.72, y: 0.43, layer: 'back', facing: 'inward', labelAnchor: 'above' },
+  { x: 0.86, y: 0.55, layer: 'side', facing: 'inward', labelAnchor: 'right' },
+  { x: 0.72, y: 0.77, layer: 'front', facing: 'inward', labelAnchor: 'below' },
+  { x: 0.5, y: 0.8, layer: 'front', facing: 'inward', labelAnchor: 'below' },
+  { x: 0.28, y: 0.77, layer: 'front', facing: 'inward', labelAnchor: 'below' },
+  { x: 0.14, y: 0.55, layer: 'side', facing: 'inward', labelAnchor: 'left' },
 ]
 
 /**
@@ -60,10 +60,7 @@ export function mapParticipantsToChairs(participantCount: number): number[] {
 }
 
 /** Chair index → participant index, or -1 when empty. */
-export function participantIndexForChair(
-  chairIndex: number,
-  participantCount: number,
-): number {
+export function participantIndexForChair(chairIndex: number, participantCount: number): number {
   const occupied = mapParticipantsToChairs(participantCount)
   return occupied.indexOf(chairIndex)
 }

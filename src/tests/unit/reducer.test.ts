@@ -69,7 +69,7 @@ describe('client reducer', () => {
   it('rejects terminal resurrection via late active snapshot', () => {
     let state = createClientRunState()
     const terminal = baseSnapshot({
-      status: 'completed',
+      status: 'cancelled',
       revision: 5,
       lastEventSeq: 5,
       endedAt: '2026-01-01T00:01:00.000Z',

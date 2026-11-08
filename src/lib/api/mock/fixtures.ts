@@ -51,7 +51,10 @@ export function isSampleQuestion(question: string): boolean {
   return question.trim().toLowerCase() === SAMPLE_QUESTION.toLowerCase()
 }
 
-type FixtureOpinion = Omit<Opinion, 'id' | 'participantId' | 'roundNumber' | 'submittedAt' | 'elapsedMs'>
+type FixtureOpinion = Omit<
+  Opinion,
+  'id' | 'participantId' | 'roundNumber' | 'submittedAt' | 'elapsedMs'
+>
 
 const SAMPLE_ROUND1: Record<string, FixtureOpinion> = {
   'p-architect': {
@@ -100,15 +103,19 @@ export function sampleRound2(
     const pragmatist = previousByParticipant['p-pragmatist']
     return {
       position: 'Investigate first',
-      rationale:
-        'The missing-evidence argument is persuasive; migrate only after a bounded proof.',
-      supportingPoints: ['Evidence first reduces rewrite risk', 'Architecture goals still matter later'],
+      rationale: 'The missing-evidence argument is persuasive; migrate only after a bounded proof.',
+      supportingPoints: [
+        'Evidence first reduces rewrite risk',
+        'Architecture goals still matter later',
+      ],
       concerns: ['Delaying migration prolongs current friction'],
       openQuestions: ['How large should the spike be?'],
       confidence: 'medium',
       revision: {
         kind: 'changed',
-        reason: 'Changed after Pragmatist’s missing-evidence argument.',
+        reason: pragmatist
+          ? 'Changed after Pragmatist’s missing-evidence argument.'
+          : 'Reconsidered the evidence needed before a migration.',
         influencedBy: pragmatist
           ? [
               {
@@ -125,7 +132,10 @@ export function sampleRound2(
     return {
       position: 'Keep',
       rationale: 'Still unconvinced; disagreement remains until pain is measured.',
-      supportingPoints: ['No new production evidence appeared', 'Spike must not become a soft rewrite'],
+      supportingPoints: [
+        'No new production evidence appeared',
+        'Spike must not become a soft rewrite',
+      ],
       concerns: ['Investigation can quietly expand scope'],
       openQuestions: ['Who owns the decision gate?'],
       confidence: 'high',
@@ -162,14 +172,17 @@ export function sampleRound3(
     const skeptic = previousByParticipant['p-skeptic']
     return {
       position: 'Keep for now',
-      rationale: 'After another pass, defer migration until evidence exists; revisit architecture later.',
+      rationale:
+        'After another pass, defer migration until evidence exists; revisit architecture later.',
       supportingPoints: ['Preserves delivery capacity', 'Leaves a clear reconsideration trigger'],
       concerns: ['Technical debt continues accumulating'],
       openQuestions: [],
       confidence: 'medium',
       revision: {
         kind: 'changed',
-        reason: 'Revised again after Skeptic’s insistence on measurable thresholds.',
+        reason: skeptic
+          ? 'Revised again after Skeptic’s insistence on measurable thresholds.'
+          : 'Revised again after reviewing the published discussion.',
         influencedBy: skeptic
           ? [{ roundNumber: 2, participantId: skeptic.participantId, responseId: skeptic.id }]
           : [],

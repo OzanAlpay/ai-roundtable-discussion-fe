@@ -53,7 +53,11 @@ export function applySnapshot(
     return { kind: 'ignored', reason: 'wrong_run' }
   }
 
-  if (state.snapshot && isTerminalStatus(state.snapshot.status) && !isTerminalStatus(snapshot.status)) {
+  if (
+    state.snapshot &&
+    isTerminalStatus(state.snapshot.status) &&
+    snapshot.lastEventSeq > state.lastAppliedSeq
+  ) {
     return { kind: 'terminal_closed' }
   }
 
@@ -69,14 +73,19 @@ export function applySnapshot(
     return { kind: 'ignored', reason: 'duplicate' }
   }
 
-  if (
-    state.snapshot &&
-    !opts?.allowJump &&
-    snapshot.lastEventSeq > state.lastAppliedSeq + 1
-  ) {
+  if (state.snapshot && !opts?.allowJump && snapshot.lastEventSeq > state.lastAppliedSeq + 1) {
     // HTTP snapshots may jump; callers set allowJump for GET/create/command.
   }
 
+  if (state.snapshot && !preservesHistory(state.snapshot, snapshot))
+    return {
+      kind: 'error',
+      error: {
+        code: 'protocol.history_changed',
+        message: 'The service changed published meeting history.',
+        retryable: false,
+      },
+    }
   return { kind: 'applied', snapshot }
 }
 
@@ -108,7 +117,11 @@ export function applyEvent(
     return { kind: 'ignored', reason: 'wrong_run' }
   }
 
-  if (state.snapshot && isTerminalStatus(state.snapshot.status) && !isTerminalStatus(event.snapshot.status)) {
+  if (
+    state.snapshot &&
+    isTerminalStatus(state.snapshot.status) &&
+    event.seq > state.lastAppliedSeq
+  ) {
     return { kind: 'terminal_closed' }
   }
 
@@ -120,6 +133,15 @@ export function applyEvent(
     return { kind: 'gap', expectedSeq: state.lastAppliedSeq + 1, receivedSeq: event.seq }
   }
 
+  if (state.snapshot && !preservesHistory(state.snapshot, event.snapshot))
+    return {
+      kind: 'error',
+      error: {
+        code: 'protocol.history_changed',
+        message: 'The service changed published meeting history.',
+        retryable: false,
+      },
+    }
   return { kind: 'applied', snapshot: event.snapshot, event }
 }
 
@@ -159,4 +181,16 @@ function toPublicError(error: unknown, code: string, message: string): PublicErr
 
 export function exhaustive(_value: never): never {
   throw new Error('Unhandled case')
+}
+
+function preservesHistory(previous: RunSnapshot, next: RunSnapshot): boolean {
+  return (
+    JSON.stringify(previous.config) === JSON.stringify(next.config) &&
+    JSON.stringify(previous.participantLabels) === JSON.stringify(next.participantLabels) &&
+    previous.rounds
+      .filter((r) => r.published)
+      .every(
+        (r) => JSON.stringify(r) === JSON.stringify(next.rounds.find((n) => n.number === r.number)),
+      )
+  )
 }

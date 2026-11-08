@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount } from 'svelte'
   import type { RunSnapshot } from '../domain/types'
   import { canExclude, canRetry, currentRound, slotFor } from '../domain/selectors'
   import ResponseCard from './ResponseCard.svelte'
@@ -14,18 +15,36 @@
 
   let { snapshot, participantId, pending, onRetry, onExclude, onClose }: Props = $props()
 
+  let dialog = $state<HTMLDialogElement>()
+  onMount(() => {
+    const previous = document.activeElement as HTMLElement | null
+    dialog?.showModal()
+    return () => {
+      dialog?.close()
+      previous?.focus()
+    }
+  })
   const participant = $derived(snapshot.config.participants.find((p) => p.id === participantId))
   const label = $derived(snapshot.participantLabels.find((l) => l.participantId === participantId))
   const round = $derived(currentRound(snapshot))
   const slot = $derived(slotFor(round, participantId))
   const history = $derived(
-    snapshot.rounds
-      .flatMap((r) => r.published?.responses.filter((x) => x.participantId === participantId) ?? []),
+    snapshot.rounds.flatMap(
+      (r) => r.published?.responses.filter((x) => x.participantId === participantId) ?? [],
+    ),
   )
 </script>
 
 {#if participant}
-  <div class="drawer" role="dialog" aria-modal="true" aria-label={`${participant.name} details`}>
+  <dialog
+    bind:this={dialog}
+    class="drawer"
+    aria-label={`${participant.name} details`}
+    oncancel={(e) => {
+      e.preventDefault()
+      onClose()
+    }}
+  >
     <header>
       <div>
         <h2>{participant.name}</h2>
@@ -49,7 +68,11 @@
           {/each}
         </ol>
         <div class="actions">
-          <button type="button" disabled={pending || !canRetry(snapshot, participantId)} onclick={onRetry}>
+          <button
+            type="button"
+            disabled={pending || !canRetry(snapshot, participantId)}
+            onclick={onRetry}
+          >
             Retry
           </button>
           <button
@@ -73,7 +96,7 @@
         {/each}
       {/if}
     </section>
-  </div>
+  </dialog>
 {/if}
 
 <style>
@@ -91,6 +114,8 @@
     box-shadow: var(--shadow-soft);
     padding: 1rem;
     display: grid;
+    margin: 0 0 0 auto;
+    max-height: calc(100vh - 2rem);
     gap: 1rem;
     align-content: start;
   }
@@ -128,5 +153,9 @@
   section {
     display: grid;
     gap: 0.5rem;
+  }
+  .drawer::backdrop {
+    background: #1b254777;
+    backdrop-filter: blur(4px);
   }
 </style>

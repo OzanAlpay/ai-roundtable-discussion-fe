@@ -13,6 +13,8 @@ import {
   setProtocolError,
   type ClientRunState,
 } from '../domain/reducer'
+import { reconcileDraft } from '../domain/draft'
+import { TransportError } from '../api/transportError'
 import { validateDraftConfig } from '../domain/schemas'
 import type {
   Catalog,
@@ -23,13 +25,7 @@ import type {
   RunCommand,
   ViewPhase,
 } from '../domain/types'
-import {
-  clearDraft,
-  loadDraft,
-  loadPrefs,
-  saveDraft,
-  savePrefs,
-} from './draftPersistence'
+import { clearDraft, loadDraft, loadPrefs, saveDraft, savePrefs } from './draftPersistence'
 
 function newId(prefix: string): string {
   return `${prefix}-${crypto.randomUUID()}`
@@ -50,6 +46,14 @@ export class RoundtableController {
   liveAnnouncement: string = $state('')
   mode: 'mock' | 'http' = $state('mock')
 
+  private disposed = false
+  private recoveryPending = false
+  private recoveryCount = 0
+  private pendingCreate: { requestId: string; config: DiscussionConfig } | null = null
+  private uncertainCommand: {
+    command: RunCommand
+    context: { requestId: string; expectedRevision: number }
+  } | null = null
   private api: RoundtableApi
   private mock: MockRoundtableApi | null
   private unsubscribe: (() => void) | null = null
@@ -61,7 +65,9 @@ export class RoundtableController {
     this.mock = mock
     const prefs = loadPrefs()
     this.selectedTab = prefs.selectedTab
-    this.demoScenarioId = (prefs.demoScenarioId as DemoScenarioId) || 'healthy-two-rounds'
+    this.demoScenarioId = DEMO_SCENARIOS.some((s) => s.id === prefs.demoScenarioId)
+      ? (prefs.demoScenarioId as DemoScenarioId)
+      : 'healthy-two-rounds'
     this.draft = loadDraft()
     if (this.mock) this.mock.setScenario(this.demoScenarioId)
     this.reloadNotice =
@@ -87,12 +93,13 @@ export class RoundtableController {
 
   async init(): Promise<void> {
     try {
-      this.catalog = await this.api.getCatalog()
+      const catalog = await this.api.getCatalog()
+      if (this.disposed) return
+      this.catalog = catalog
+      this.draft = reconcileDraft(this.draft, catalog)
+      this.createError = null
     } catch (error) {
-      this.createError =
-        error instanceof Error
-          ? error.message
-          : 'Unable to load model catalog.'
+      this.createError = error instanceof Error ? error.message : 'Unable to load model catalog.'
       if (this.mode === 'http') {
         this.createError =
           'Cannot reach the roundtable API. Configure a backend or set VITE_ROUNDTABLE_MODE=mock.'
@@ -101,6 +108,11 @@ export class RoundtableController {
   }
 
   setScenario(id: DemoScenarioId): void {
+    if (
+      this.viewPhase === 'submitting' ||
+      (this.snapshot && !isTerminalStatus(this.snapshot.status))
+    )
+      return
     this.demoScenarioId = id
     this.mock?.setScenario(id)
     const scenario = DEMO_SCENARIOS.find((s) => s.id === id)
@@ -115,23 +127,25 @@ export class RoundtableController {
       }
       while (this.draft.participants.length < n) this.addParticipant()
     }
+    saveDraft($state.snapshot(this.draft))
     this.persistPrefs()
   }
 
   updateDraft(mutator: (draft: DiscussionConfig) => DiscussionConfig): void {
+    if (this.viewPhase === 'submitting') return
     if (this.viewPhase === 'viewing' && this.snapshot && !isTerminalStatus(this.snapshot.status)) {
       return
     }
     this.draft = mutator(this.draft)
     const result = saveDraft(this.draft)
-    this.draftMessage = result.ok
-      ? 'Draft saved in this browser only.'
-      : result.message ?? null
+    this.draftMessage = result.ok ? 'Draft saved in this browser only.' : (result.message ?? null)
   }
 
   clearSavedDraft(): void {
     clearDraft()
-    this.draft = createDefaultDraftConfig()
+    this.draft = this.catalog
+      ? reconcileDraft(createDefaultDraftConfig(), this.catalog)
+      : createDefaultDraftConfig()
     this.draftMessage = 'Saved draft cleared.'
   }
 
@@ -143,8 +157,9 @@ export class RoundtableController {
       const i = draft.participants.length
       const provider = this.catalog?.providers[i % (this.catalog.providers.length || 1)]
       const model =
-        this.catalog?.models.find((m) => m.providerId === provider?.id && m.availability === 'available') ??
-        this.catalog?.models.find((m) => m.availability === 'available')
+        this.catalog?.models.find(
+          (m) => m.providerId === provider?.id && m.availability === 'available',
+        ) ?? this.catalog?.models.find((m) => m.availability === 'available')
       return {
         ...draft,
         participants: [
@@ -152,8 +167,8 @@ export class RoundtableController {
           {
             id: newId('p'),
             name: `Agent ${i + 1}`,
-            providerId: provider?.id ?? 'demo-copilot',
-            modelId: model?.id ?? 'demo-gpt',
+            providerId: model?.providerId ?? '',
+            modelId: model?.id ?? '',
             roleLabel: 'Custom',
             roleInstruction: 'Contribute a clear engineering opinion.',
             accent: accents[i % accents.length]!,
@@ -175,7 +190,12 @@ export class RoundtableController {
   }
 
   async start(): Promise<void> {
-    if (!this.catalog) return
+    if (
+      !this.catalog ||
+      this.disposed ||
+      (this.snapshot && !isTerminalStatus(this.snapshot.status))
+    )
+      return
     const issues = validateDraftConfig(this.draft, this.catalog)
     if (issues.length) {
       this.createError = issues[0]!.message
@@ -190,25 +210,30 @@ export class RoundtableController {
     try {
       this.teardownSubscription()
       this.client = createClientRunState()
-      const snapshot = await this.api.createRun({
-        requestId: newId('req'),
-        config: $state.snapshot(this.draft) as DiscussionConfig,
-      })
+      const config = $state.snapshot(this.draft) as DiscussionConfig
+      if (
+        !this.pendingCreate ||
+        JSON.stringify(this.pendingCreate.config) !== JSON.stringify(config)
+      )
+        this.pendingCreate = { requestId: newId('req'), config }
+      const snapshot = await this.api.createRun(this.pendingCreate)
+      if (this.disposed) return
       const applied = applySnapshot(this.client, snapshot, { allowJump: true })
+      if (applied.kind === 'error') throw new Error(applied.error.message)
       if (applied.kind === 'applied') {
+        this.pendingCreate = null
+        this.recoveryCount = 0
         this.client = commitApplied(this.client, applied.snapshot)
         this.activeRunId = applied.snapshot.id
       }
       this.viewPhase = 'viewing'
+      this.selectedParticipantId = null
       this.selectedTab = 'overview'
       this.subscribeToActiveRun()
       this.liveAnnouncement = 'Meeting started.'
     } catch (error) {
       this.viewPhase = 'create_error'
-      this.createError =
-        error instanceof Error
-          ? error.message
-          : 'Unable to start the meeting.'
+      this.createError = error instanceof Error ? error.message : 'Unable to start the meeting.'
     }
   }
 
@@ -216,10 +241,13 @@ export class RoundtableController {
     if (this.snapshot && !isTerminalStatus(this.snapshot.status)) {
       if (!forceCancel) return
       await this.sendCommand({ type: 'cancel' })
+      if (!this.snapshot || !isTerminalStatus(this.snapshot.status)) return
     }
     this.teardownSubscription()
     this.client = createClientRunState()
     this.activeRunId = null
+    this.uncertainCommand = null
+    this.pendingCreate = null
     this.viewPhase = 'setup'
     this.selectedParticipantId = null
     this.createError = null
@@ -236,30 +264,36 @@ export class RoundtableController {
   }
 
   async sendCommand(command: RunCommand): Promise<void> {
-    if (!this.snapshot) return
-    const key = command.type === 'cancel'
-      ? 'cancel'
-      : `${command.type}:${'participantId' in command ? command.participantId : ''}`
+    if (!this.snapshot || isTerminalStatus(this.snapshot.status)) return
+    const key =
+      command.type === 'cancel'
+        ? 'cancel'
+        : `${command.type}:${'participantId' in command ? command.participantId : ''}`
     if (this.pendingCommand) return
     this.pendingCommand = key
+    const runId = this.snapshot.id
+    const context =
+      this.uncertainCommand &&
+      JSON.stringify(this.uncertainCommand.command) === JSON.stringify(command)
+        ? this.uncertainCommand.context
+        : { requestId: newId('cmd'), expectedRevision: this.snapshot.revision }
+    this.uncertainCommand = { command, context }
     try {
-      const snapshot = await this.api.command(
-        this.snapshot.id,
-        command,
-        {
-          requestId: newId('cmd'),
-          expectedRevision: this.snapshot.revision,
-        },
-      )
+      const snapshot = await this.api.command(this.snapshot.id, command, context)
+      if (this.disposed || this.activeRunId !== runId) return
+      this.uncertainCommand = null
       const applied = applySnapshot(this.client, snapshot, {
         allowJump: true,
-        expectedRunId: this.snapshot.id,
+        expectedRunId: runId,
       })
       if (applied.kind === 'applied') {
         this.client = commitApplied(this.client, applied.snapshot)
         this.announceFromSnapshot()
       }
     } catch (error) {
+      if (this.disposed || this.activeRunId !== runId) return
+      if (error instanceof TransportError && error.httpStatus && error.httpStatus < 500)
+        this.uncertainCommand = null
       this.client = setProtocolError(this.client, {
         code: 'command_failed',
         message: error instanceof Error ? error.message : 'Command failed.',
@@ -269,25 +303,40 @@ export class RoundtableController {
         try {
           const fresh = await this.api.getRun(this.snapshot.id)
           const applied = applySnapshot(this.client, fresh, { allowJump: true })
-          if (applied.kind === 'applied') this.client = commitApplied(this.client, applied.snapshot)
+          if (!this.disposed && this.activeRunId === runId && applied.kind === 'applied') {
+            const error = this.client.protocolError
+            this.client = { ...commitApplied(this.client, applied.snapshot), protocolError: error }
+          }
         } catch {
           // keep protocol error
         }
       }
     } finally {
+      if (this.snapshot && isTerminalStatus(this.snapshot.status)) {
+        this.teardownSubscription()
+        this.client = setConnection(this.client, 'closed')
+      }
       this.pendingCommand = null
     }
   }
 
   async retryConnection(): Promise<void> {
-    if (!this.snapshot) return
+    if (!this.snapshot) {
+      await this.init()
+      return
+    }
+    this.recoveryCount = 0
+    this.teardownSubscription()
+    const runId = this.snapshot.id
     this.client = setProtocolError(this.client, null)
     try {
       const fresh = await this.api.getRun(this.snapshot.id)
+      if (this.disposed || this.activeRunId !== runId) return
       const applied = applySnapshot(this.client, fresh, {
         allowJump: true,
         expectedRunId: this.snapshot.id,
       })
+      if (applied.kind === 'error') throw new Error(applied.error.message)
       if (applied.kind === 'applied') {
         this.client = commitApplied(this.client, applied.snapshot)
       }
@@ -307,33 +356,74 @@ export class RoundtableController {
   }
 
   dispose(): void {
+    this.disposed = true
+    this.activeRunId = null
     this.teardownSubscription()
     this.api.dispose()
   }
 
   private subscribeToActiveRun(): void {
-    if (!this.snapshot) return
+    if (!this.snapshot || this.disposed || isTerminalStatus(this.snapshot.status)) return
     this.teardownSubscription()
     this.client = bumpSubscriptionGeneration(this.client)
     const generation = this.client.subscriptionGeneration
     const runId = this.snapshot.id
     this.activeRunId = runId
     const afterSeq = this.client.lastAppliedSeq
-    this.unsubscribe = this.api.subscribe(runId, {
+    const unsubscribe = this.api.subscribe(runId, {
       afterSeq,
+      onSnapshot: (snapshot) => {
+        if (
+          this.disposed ||
+          this.activeRunId !== runId ||
+          this.client.subscriptionGeneration !== generation
+        )
+          return
+        const result = applySnapshot(this.client, snapshot, {
+          allowJump: true,
+          expectedRunId: runId,
+        })
+        if (result.kind === 'applied') {
+          this.client = commitApplied(this.client, result.snapshot)
+          this.announceFromSnapshot()
+          if (isTerminalStatus(result.snapshot.status)) {
+            this.teardownSubscription()
+            this.client = setConnection(this.client, 'closed')
+          }
+        } else if (result.kind === 'error') {
+          this.client = setProtocolError(this.client, result.error)
+          this.teardownSubscription()
+        }
+      },
       onConnection: (state) => {
-        if (this.activeRunId !== runId) return
+        if (
+          this.disposed ||
+          this.activeRunId !== runId ||
+          this.client.subscriptionGeneration !== generation
+        )
+          return
         this.client = setConnection(this.client, state)
       },
       onError: (error: PublicError) => {
-        if (this.activeRunId !== runId) return
+        if (
+          this.disposed ||
+          this.activeRunId !== runId ||
+          this.client.subscriptionGeneration !== generation
+        )
+          return
         this.client = setProtocolError(this.client, error)
-        if (error.code.startsWith('protocol.') || error.code === 'reconnect_exhausted') {
-          void this.handleProtocolRecovery(runId)
+        if (error.code === 'reconnect_exhausted' || !error.retryable) {
+          this.teardownSubscription()
+          this.client = setConnection(this.client, 'offline')
         }
       },
       onEvent: (event) => {
-        if (this.activeRunId !== runId) return
+        if (
+          this.disposed ||
+          this.activeRunId !== runId ||
+          this.client.subscriptionGeneration !== generation
+        )
+          return
         const result = applyEvent(this.client, event, {
           generation,
           expectedRunId: runId,
@@ -353,13 +443,34 @@ export class RoundtableController {
         }
       },
     })
+    if (
+      this.client.subscriptionGeneration !== generation ||
+      (this.snapshot && isTerminalStatus(this.snapshot.status))
+    ) {
+      unsubscribe()
+    } else {
+      this.unsubscribe = unsubscribe
+    }
   }
 
   private async handleProtocolRecovery(runId: string): Promise<void> {
+    if (this.recoveryPending) return
     this.teardownSubscription()
+    if (this.recoveryCount++ >= 1) {
+      this.client = setConnection(this.client, 'offline')
+      this.client = setProtocolError(this.client, {
+        code: 'protocol.repeated',
+        message: 'Repeated inconsistent updates. Retry connection to resynchronize.',
+        retryable: true,
+      })
+      return
+    }
+    this.recoveryPending = true
     try {
       const fresh = await this.api.getRun(runId)
+      if (this.disposed || this.activeRunId !== runId) return
       const applied = applySnapshot(this.client, fresh, { allowJump: true, expectedRunId: runId })
+      if (applied.kind === 'error') throw new Error(applied.error.message)
       if (applied.kind === 'applied') {
         this.client = commitApplied(this.client, applied.snapshot)
       }
@@ -375,10 +486,13 @@ export class RoundtableController {
         retryable: true,
       })
       this.client = setConnection(this.client, 'offline')
+    } finally {
+      this.recoveryPending = false
     }
   }
 
   private teardownSubscription(): void {
+    this.client = bumpSubscriptionGeneration(this.client)
     this.unsubscribe?.()
     this.unsubscribe = null
   }

@@ -68,7 +68,7 @@ export const opinionSchema = z.object({
     reason: z.string().nullable(),
     influencedBy: z.array(responseRefSchema),
   }),
-  submittedAt: z.string(),
+  submittedAt: z.string().datetime(),
   elapsedMs: z.number().optional(),
 })
 
@@ -82,22 +82,14 @@ const attemptSchema = z.object({
   id: idSchema,
   number: z.number().int().positive(),
   status: z.enum(['reading', 'thinking', 'succeeded', 'failed', 'cancelled']),
-  startedAt: z.string(),
-  endedAt: z.string().nullable(),
+  startedAt: z.string().datetime(),
+  endedAt: z.string().datetime().nullable(),
   error: publicErrorSchema.nullable(),
 })
 
 const roundSlotSchema = z.object({
   participantId: idSchema,
-  status: z.enum([
-    'pending',
-    'reading',
-    'thinking',
-    'submitted',
-    'failed',
-    'skipped',
-    'cancelled',
-  ]),
+  status: z.enum(['pending', 'reading', 'thinking', 'submitted', 'failed', 'skipped', 'cancelled']),
   attempts: z.array(attemptSchema),
   response: opinionSchema.nullable(),
 })
@@ -105,7 +97,7 @@ const roundSlotSchema = z.object({
 const publishedRoundSchema = z.object({
   id: idSchema,
   number: z.number().int().positive(),
-  publishedAt: z.string(),
+  publishedAt: z.string().datetime(),
   responses: z.array(opinionSchema),
   excludedParticipantIds: z.array(idSchema),
 })
@@ -117,15 +109,15 @@ const roundStateSchema = z.object({
   inputSnapshotId: idSchema.nullable(),
   expectedParticipantIds: z.array(idSchema),
   slots: z.array(roundSlotSchema),
-  startedAt: z.string(),
+  startedAt: z.string().datetime(),
   published: publishedRoundSchema.nullable(),
 })
 
 export const runSnapshotSchema = z.object({
   schemaVersion: z.literal(1),
   id: idSchema,
-  revision: z.number().int().nonnegative(),
-  lastEventSeq: z.number().int().nonnegative(),
+  revision: z.number().int().positive(),
+  lastEventSeq: z.number().int().positive(),
   status: z.enum([
     'queued',
     'round_active',
@@ -146,9 +138,9 @@ export const runSnapshotSchema = z.object({
   excludedParticipantIds: z.array(idSchema),
   currentRoundNumber: z.number().int().positive().nullable(),
   rounds: z.array(roundStateSchema),
-  createdAt: z.string(),
-  updatedAt: z.string(),
-  endedAt: z.string().nullable(),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
+  endedAt: z.string().datetime().nullable(),
   terminalError: publicErrorSchema.nullable(),
 })
 
@@ -186,13 +178,21 @@ export const runEventSchema = z.object({
   runId: idSchema,
   eventId: idSchema,
   seq: z.number().int().positive(),
-  occurredAt: z.string(),
+  occurredAt: z.string().datetime(),
   detail: runEventDetailSchema,
   snapshot: runSnapshotSchema,
 })
 
 export function parseCatalog(data: unknown): Catalog {
-  return catalogSchema.parse(data)
+  const catalog = catalogSchema.parse(data)
+  const providers = new Set(catalog.providers.map((p) => p.id))
+  if (
+    providers.size !== catalog.providers.length ||
+    new Set(catalog.models.map((m) => m.id)).size !== catalog.models.length ||
+    catalog.models.some((m) => !providers.has(m.providerId))
+  )
+    throw new Error('Invalid catalog relationships.')
+  return catalog
 }
 
 export function parseDiscussionConfig(data: unknown): DiscussionConfig {
@@ -218,25 +218,36 @@ export function validateDraftConfig(
 ): DraftValidationIssue[] {
   const issues: DraftValidationIssue[] = []
   const q = config.question.trim()
-  if (q.length < 20) issues.push({ path: 'question', message: 'Question must be at least 20 characters.' })
-  if (q.length > 8000) issues.push({ path: 'question', message: 'Question must be at most 8000 characters.' })
+  if (q.length < 20)
+    issues.push({ path: 'question', message: 'Question must be at least 20 characters.' })
+  if (q.length > 8000)
+    issues.push({ path: 'question', message: 'Question must be at most 8000 characters.' })
   if (config.participants.length < 2 || config.participants.length > 6) {
     issues.push({ path: 'participants', message: 'Use between 2 and 6 participants.' })
   }
   if (config.totalRounds !== 2 && config.totalRounds !== 3) {
     issues.push({ path: 'totalRounds', message: 'Choose 2 or 3 rounds.' })
   }
-  if (config.attemptTimeoutMs < 10_000 || config.attemptTimeoutMs > 120_000) {
+  if (
+    !Number.isInteger(config.attemptTimeoutMs) ||
+    config.attemptTimeoutMs < 10_000 ||
+    config.attemptTimeoutMs > 120_000
+  ) {
     issues.push({ path: 'attemptTimeoutMs', message: 'Timeout must be 10–120 seconds.' })
   }
 
   const ids = new Set<string>()
   for (const [index, p] of config.participants.entries()) {
-    if (ids.has(p.id)) issues.push({ path: `participants.${index}.id`, message: 'Participant IDs must be unique.' })
+    if (ids.has(p.id))
+      issues.push({ path: `participants.${index}.id`, message: 'Participant IDs must be unique.' })
     ids.add(p.id)
-    if (!p.name.trim()) issues.push({ path: `participants.${index}.name`, message: 'Name is required.' })
+    if (!p.name.trim())
+      issues.push({ path: `participants.${index}.name`, message: 'Name is required.' })
     if (p.name.trim().length > 40) {
-      issues.push({ path: `participants.${index}.name`, message: 'Name must be at most 40 characters.' })
+      issues.push({
+        path: `participants.${index}.name`,
+        message: 'Name must be at most 40 characters.',
+      })
     }
     const provider = catalog.providers.find((x) => x.id === p.providerId)
     if (!provider) {
@@ -246,9 +257,15 @@ export function validateDraftConfig(
     if (!model) {
       issues.push({ path: `participants.${index}.modelId`, message: 'Unknown model.' })
     } else if (model.providerId !== p.providerId) {
-      issues.push({ path: `participants.${index}.modelId`, message: 'Model does not belong to the selected provider.' })
+      issues.push({
+        path: `participants.${index}.modelId`,
+        message: 'Model does not belong to the selected provider.',
+      })
     } else if (model.availability !== 'available') {
-      issues.push({ path: `participants.${index}.modelId`, message: model.unavailableReason ?? 'Model unavailable.' })
+      issues.push({
+        path: `participants.${index}.modelId`,
+        message: model.unavailableReason ?? 'Model unavailable.',
+      })
     }
     if (p.roleLabel === 'Custom' && !p.roleInstruction.trim()) {
       issues.push({

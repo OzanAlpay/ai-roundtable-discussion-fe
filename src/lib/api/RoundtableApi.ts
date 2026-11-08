@@ -27,6 +27,8 @@ export interface RoundtableApi {
     runId: Id,
     options: {
       afterSeq: number
+      /** Authoritative GET result delivered before SSE reconnect. */
+      onSnapshot?: (snapshot: RunSnapshot) => void
       onEvent: (event: RunEvent) => void
       onConnection: (state: ConnectionState) => void
       onError: (error: PublicError) => void

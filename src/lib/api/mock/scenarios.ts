@@ -1,12 +1,7 @@
 import type { DemoScenarioId } from '../../domain/types'
 
-export interface DemoScenario {
-  id: DemoScenarioId
-  label: string
-  description: string
-  recommendedParticipantCount?: number
-  recommendedRounds?: 2 | 3
-}
+import type { DemoScenario } from '../../domain/types'
+export type { DemoScenario } from '../../domain/types'
 
 export const DEMO_SCENARIOS: DemoScenario[] = [
   {

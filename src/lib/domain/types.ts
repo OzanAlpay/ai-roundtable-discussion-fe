@@ -95,14 +95,7 @@ export interface Attempt {
 
 export interface RoundSlot {
   participantId: Id
-  status:
-    | 'pending'
-    | 'reading'
-    | 'thinking'
-    | 'submitted'
-    | 'failed'
-    | 'skipped'
-    | 'cancelled'
+  status: 'pending' | 'reading' | 'thinking' | 'submitted' | 'failed' | 'skipped' | 'cancelled'
   attempts: Attempt[]
   response: Opinion | null
 }
@@ -171,12 +164,7 @@ export interface RunEvent {
   snapshot: RunSnapshot
 }
 
-export type ConnectionState =
-  | 'connecting'
-  | 'connected'
-  | 'reconnecting'
-  | 'offline'
-  | 'closed'
+export type ConnectionState = 'connecting' | 'connected' | 'reconnecting' | 'offline' | 'closed'
 
 export interface CommandContext {
   requestId: Id
@@ -211,3 +199,11 @@ export const ROLE_PRESETS = [
 ] as const
 
 export type RolePreset = (typeof ROLE_PRESETS)[number]
+
+export interface DemoScenario {
+  id: DemoScenarioId
+  label: string
+  description: string
+  recommendedParticipantCount?: number
+  recommendedRounds?: 2 | 3
+}

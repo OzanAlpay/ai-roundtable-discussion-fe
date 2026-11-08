@@ -1,3 +1,4 @@
+import { discussionConfigSchema } from '../domain/schemas'
 import type { DiscussionConfig } from '../domain/types'
 import { createDefaultDraftConfig } from '../api/mock/fixtures'
 
@@ -22,7 +23,8 @@ export function loadDraft(): DiscussionConfig {
     if (!raw) return createDefaultDraftConfig()
     const parsed = JSON.parse(raw) as StoredDraft
     if (parsed?.schemaVersion !== 1 || !parsed.config) return createDefaultDraftConfig()
-    return parsed.config
+    const valid = discussionConfigSchema.safeParse(parsed.config)
+    return valid.success ? valid.data : createDefaultDraftConfig()
   } catch {
     return createDefaultDraftConfig()
   }
@@ -60,7 +62,12 @@ export function loadPrefs(): UiPreferences {
     if (parsed?.schemaVersion !== 1) {
       return { schemaVersion: 1, selectedTab: 'overview', demoScenarioId: 'healthy-two-rounds' }
     }
-    return parsed
+    return {
+      schemaVersion: 1,
+      selectedTab: typeof parsed.selectedTab === 'string' ? parsed.selectedTab : 'overview',
+      demoScenarioId:
+        typeof parsed.demoScenarioId === 'string' ? parsed.demoScenarioId : 'healthy-two-rounds',
+    }
   } catch {
     return { schemaVersion: 1, selectedTab: 'overview', demoScenarioId: 'healthy-two-rounds' }
   }

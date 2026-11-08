@@ -1,286 +1,310 @@
 import { parseCatalog, parseRunEvent, parseRunSnapshot } from '../domain/schemas'
+import { assertRunEvent, assertRunSnapshot } from '../domain/invariants'
+import { isTerminalStatus } from '../domain/reducer'
 import type {
   Catalog,
   CommandContext,
-  ConnectionState,
   DiscussionConfig,
   Id,
-  PublicError,
   RunCommand,
-  RunEvent,
   RunSnapshot,
 } from '../domain/types'
 import type { RoundtableApi } from './RoundtableApi'
 import { SseParser } from './sseParser'
-import {
-  normalizeHttpError,
-  TransportError,
-  unavailableError,
-} from './transportError'
+import { normalizeHttpError, TransportError, unavailableError } from './transportError'
 
+type Observer = Parameters<RoundtableApi['subscribe']>[1]
 export interface HttpSseDeps {
   fetch?: typeof fetch
   baseUrl: string
   reconnectDelaysMs?: number[]
   maxReconnectAttempts?: number
+  requestTimeoutMs?: number
   now?: () => number
   setTimeout?: (fn: () => void, ms: number) => ReturnType<typeof setTimeout>
   clearTimeout?: (id: ReturnType<typeof setTimeout>) => void
 }
-
-interface ActiveSubscription {
+interface Subscription {
   runId: Id
-  abort: AbortController
-  generation: number
+  observer: Observer
+  cursor: number
   closed: boolean
-  lastAppliedSeq: number
-  options: {
-    afterSeq: number
-    onEvent: (event: RunEvent) => void
-    onConnection: (state: ConnectionState) => void
-    onError: (error: PublicError) => void
-  }
-  reconnectAttempts: number
-  reconnectTimer: ReturnType<typeof setTimeout> | null
+  retries: number
+  abort: AbortController
+  timer: ReturnType<typeof setTimeout> | null
 }
+const protocolError = (message: string) =>
+  new TransportError({ code: 'protocol.invalid', message, retryable: false })
 
+/** Only transport owns reconnect/backoff. Resync snapshots use a distinct callback, never fake events. */
 export class HttpSseRoundtableApi implements RoundtableApi {
-  private readonly fetchImpl: typeof fetch
-  private readonly baseUrl: string
-  private readonly reconnectDelaysMs: number[]
-  private readonly maxReconnectAttempts: number
-  private readonly setTimeoutImpl: HttpSseDeps['setTimeout']
-  private readonly clearTimeoutImpl: HttpSseDeps['clearTimeout']
+  private fetchImpl: typeof fetch
+  private base: string
+  private deps: HttpSseDeps
+  private sub: Subscription | null = null
   private disposed = false
-  private subscription: ActiveSubscription | null = null
-  private generation = 0
-
+  private requests = new Set<AbortController>()
   constructor(deps: HttpSseDeps) {
+    this.deps = deps
     this.fetchImpl = deps.fetch ?? fetch.bind(globalThis)
-    this.baseUrl = deps.baseUrl.replace(/\/$/, '')
-    this.reconnectDelaysMs = deps.reconnectDelaysMs ?? [1000, 2000, 4000, 8000, 15000]
-    this.maxReconnectAttempts = deps.maxReconnectAttempts ?? 5
-    this.setTimeoutImpl = deps.setTimeout ?? setTimeout
-    this.clearTimeoutImpl = deps.clearTimeout ?? clearTimeout
+    this.base = deps.baseUrl.replace(/\/$/, '')
   }
-
+  private later(fn: () => void, ms: number) {
+    return (this.deps.setTimeout ?? setTimeout)(fn, ms)
+  }
+  private clear(id: ReturnType<typeof setTimeout>) {
+    ;(this.deps.clearTimeout ?? clearTimeout)(id)
+  }
   async getCatalog(signal?: AbortSignal): Promise<Catalog> {
-    return parseCatalog(await this.requestJson('GET', '/catalog', undefined, signal))
+    return parseCatalog(await this.json('GET', '/catalog', undefined, signal))
   }
-
-  async createRun(
-    input: { requestId: Id; config: DiscussionConfig },
-    signal?: AbortSignal,
-  ): Promise<RunSnapshot> {
-    return parseRunSnapshot(await this.requestJson('POST', '/runs', input, signal, 201))
+  async createRun(input: { requestId: Id; config: DiscussionConfig }, signal?: AbortSignal) {
+    return this.snapshot(await this.json('POST', '/runs', input, signal, 201))
   }
-
-  async getRun(runId: Id, signal?: AbortSignal): Promise<RunSnapshot> {
-    return parseRunSnapshot(
-      await this.requestJson('GET', `/runs/${encodeURIComponent(runId)}`, undefined, signal),
+  async getRun(id: Id, signal?: AbortSignal) {
+    const s = this.snapshot(
+      await this.json('GET', `/runs/${encodeURIComponent(id)}`, undefined, signal),
     )
+    if (s.id !== id) throw protocolError('Run identity mismatch.')
+    return s
   }
-
-  async command(
-    runId: Id,
-    command: RunCommand,
-    context: CommandContext,
-    signal?: AbortSignal,
-  ): Promise<RunSnapshot> {
-    return parseRunSnapshot(
-      await this.requestJson(
+  async command(id: Id, command: RunCommand, context: CommandContext, signal?: AbortSignal) {
+    const s = this.snapshot(
+      await this.json(
         'POST',
-        `/runs/${encodeURIComponent(runId)}/commands`,
-        {
-          requestId: context.requestId,
-          expectedRevision: context.expectedRevision,
-          command,
-        },
+        `/runs/${encodeURIComponent(id)}/commands`,
+        { ...context, command },
         signal,
       ),
     )
+    if (s.id !== id) throw protocolError('Run identity mismatch.')
+    return s
   }
-
-  subscribe(
-    runId: Id,
-    options: {
-      afterSeq: number
-      onEvent: (event: RunEvent) => void
-      onConnection: (state: ConnectionState) => void
-      onError: (error: PublicError) => void
-    },
-  ): () => void {
-    this.closeSubscription()
-    const generation = ++this.generation
-    const sub: ActiveSubscription = {
+  private snapshot(raw: unknown): RunSnapshot {
+    try {
+      const s = parseRunSnapshot(raw)
+      assertRunSnapshot(s)
+      return s
+    } catch {
+      throw protocolError('Invalid meeting snapshot received.')
+    }
+  }
+  subscribe(runId: Id, observer: Observer): () => void {
+    if (this.disposed) throw unavailableError('API disposed.')
+    this.close()
+    const sub: Subscription = {
       runId,
-      abort: new AbortController(),
-      generation,
+      observer,
+      cursor: observer.afterSeq,
       closed: false,
-      lastAppliedSeq: options.afterSeq,
-      options,
-      reconnectAttempts: 0,
-      reconnectTimer: null,
+      retries: 0,
+      abort: new AbortController(),
+      timer: null,
     }
-    this.subscription = sub
-    void this.openStream(sub)
+    this.sub = sub
+    void this.open(sub, false)
     return () => {
-      if (this.subscription?.generation === generation) this.closeSubscription()
+      if (this.sub === sub) this.close()
     }
   }
-
-  dispose(): void {
+  dispose() {
     this.disposed = true
-    this.closeSubscription()
+    this.close()
+    for (const req of this.requests) req.abort()
+    this.requests.clear()
   }
-
-  private closeSubscription(): void {
-    const sub = this.subscription
+  private close() {
+    const sub = this.sub
     if (!sub) return
     sub.closed = true
-    if (sub.reconnectTimer) this.clearTimeoutImpl?.(sub.reconnectTimer)
     sub.abort.abort()
-    sub.options.onConnection('closed')
-    this.subscription = null
+    if (sub.timer !== null) this.clear(sub.timer)
+    this.sub = null
+    sub.observer.onConnection('closed')
   }
-
-  private async openStream(sub: ActiveSubscription): Promise<void> {
-    if (sub.closed || this.disposed) return
-    sub.options.onConnection(sub.reconnectAttempts > 0 ? 'reconnecting' : 'connecting')
+  private alive(sub: Subscription) {
+    return !this.disposed && !sub.closed && this.sub === sub
+  }
+  private async open(sub: Subscription, resync: boolean): Promise<void> {
+    if (!this.alive(sub)) return
+    sub.observer.onConnection(resync ? 'reconnecting' : 'connecting')
+    let reader: ReadableStreamDefaultReader<Uint8Array> | undefined
+    let handshake: ReturnType<typeof setTimeout> | undefined
     try {
-      const url = `${this.baseUrl}/runs/${encodeURIComponent(sub.runId)}/events?afterSeq=${encodeURIComponent(String(sub.lastAppliedSeq))}`
-      const response = await this.fetchImpl(url, {
-        method: 'GET',
-        credentials: 'omit',
-        headers: { Accept: 'text/event-stream' },
-        signal: sub.abort.signal,
-      })
-      if (!response.ok || !response.body) {
-        throw unavailableError('Event stream unavailable.')
-      }
-      sub.options.onConnection('connected')
-      sub.reconnectAttempts = 0
-      const reader = response.body.getReader()
-      const decoder = new TextDecoder()
-      const parser = new SseParser()
-      while (!sub.closed) {
-        const { done, value } = await reader.read()
-        if (done) break
-        const text = decoder.decode(value, { stream: true })
-        for (const message of parser.push(text)) {
-          this.handleMessage(sub, message)
+      if (resync) {
+        const fresh = await this.getRun(sub.runId, sub.abort.signal)
+        if (!this.alive(sub)) return
+        if (fresh.lastEventSeq < sub.cursor)
+          throw protocolError('The service returned an older meeting snapshot.')
+        // Without a snapshot consumer, preserve the replay cursor so no updates are lost.
+        if (sub.observer.onSnapshot) {
+          sub.observer.onSnapshot(fresh)
+          sub.cursor = fresh.lastEventSeq
+        }
+        if (!this.alive(sub)) return
+        if (isTerminalStatus(fresh.status)) {
+          if (sub.observer.onSnapshot) {
+            this.close()
+            return
+          }
+          // Legacy consumers receive the missing terminal event through replay.
         }
       }
-      for (const message of parser.flush()) this.handleMessage(sub, message)
-      if (!sub.closed) this.scheduleReconnect(sub)
+      handshake = this.later(() => sub.abort.abort(), this.deps.requestTimeoutMs ?? 15_000)
+      const response = await this.fetchImpl(
+        `${this.base}/runs/${encodeURIComponent(sub.runId)}/events?afterSeq=${sub.cursor}`,
+        {
+          method: 'GET',
+          credentials: 'omit',
+          headers: { Accept: 'text/event-stream' },
+          signal: sub.abort.signal,
+        },
+      )
+      this.clear(handshake)
+      handshake = undefined
+      if (!this.alive(sub)) return
+      if (!response.ok) throw normalizeHttpError(response.status, null)
+      if (!response.body || !response.headers.get('Content-Type')?.includes('text/event-stream'))
+        throw protocolError('Expected an SSE event stream.')
+      sub.observer.onConnection('connected')
+      reader = response.body.getReader()
+      const decoder = new TextDecoder()
+      const parser = new SseParser()
+      while (this.alive(sub)) {
+        const { done, value } = await reader.read()
+        if (done) break
+        for (const message of parser.push(decoder.decode(value, { stream: true }))) {
+          if (!this.alive(sub)) break
+          if (message.event !== 'roundtable') continue
+          let event
+          try {
+            event = parseRunEvent(JSON.parse(message.data))
+            assertRunEvent(event)
+          } catch {
+            throw protocolError('Malformed event received. Retry connection to resynchronize.')
+          }
+          if (message.id !== String(event.seq) || event.runId !== sub.runId)
+            throw protocolError('Event identity or sequence mismatch.')
+          if (event.seq <= sub.cursor) continue
+          if (event.seq !== sub.cursor + 1) {
+            // Abort this stream; a bounded reconnect performs a GET snapshot first.
+            throw unavailableError('Missing updates detected; resynchronizing the meeting.')
+          }
+          sub.observer.onEvent(event)
+          if (!this.alive(sub)) break
+          sub.cursor = event.seq
+          sub.retries = 0 // A usable event, not just an HTTP 200, proves recovery.
+          if (isTerminalStatus(event.snapshot.status)) {
+            this.close()
+            break
+          }
+        }
+      }
+      parser.flush() // An unterminated final record must never be dispatched.
+      if (this.alive(sub)) this.reconnect(sub)
     } catch (error) {
-      if (sub.closed || this.disposed) return
-      if ((error as { name?: string })?.name === 'AbortError') return
-      const publicError =
+      if (!this.alive(sub)) return
+      const pub =
         error instanceof TransportError
           ? error.publicError
-          : { code: 'stream_error', message: 'Connection lost; meeting status may be out of date.', retryable: true }
-      sub.options.onError(publicError)
-      sub.options.onConnection('offline')
-      this.scheduleReconnect(sub)
+          : {
+              code: 'stream_error',
+              message: 'Connection lost; meeting status may be out of date.',
+              retryable: true,
+            }
+      if (!pub.retryable) {
+        this.close()
+        sub.observer.onConnection('offline')
+        sub.observer.onError(pub)
+        return
+      }
+      sub.observer.onError(pub)
+      this.reconnect(sub)
+    } finally {
+      if (handshake !== undefined) this.clear(handshake)
+      if (reader) {
+        try {
+          await reader.cancel()
+        } catch {}
+        reader.releaseLock()
+      }
     }
   }
-
-  private handleMessage(
-    sub: ActiveSubscription,
-    message: { id: string | null; event: string | null; data: string; comments: string[] },
-  ): void {
-    if (!message.data && message.comments.length) return // heartbeat
-    if (message.event && message.event !== 'roundtable') return
-    let event: RunEvent
-    try {
-      event = parseRunEvent(JSON.parse(message.data))
-    } catch {
-      sub.options.onError({
-        code: 'protocol.malformed',
-        message: 'Malformed event payload received.',
-        retryable: false,
-      })
-      return
-    }
-    if (message.id != null && message.id !== String(event.seq)) {
-      sub.options.onError({
-        code: 'protocol.sse_id_mismatch',
-        message: 'SSE id does not match event seq.',
-        retryable: false,
-      })
-      return
-    }
-    sub.lastAppliedSeq = event.seq
-    sub.options.onEvent(event)
-  }
-
-  private scheduleReconnect(sub: ActiveSubscription): void {
-    if (sub.closed || this.disposed) return
-    if (sub.reconnectAttempts >= this.maxReconnectAttempts) {
-      sub.options.onConnection('offline')
-      sub.options.onError({
+  private reconnect(sub: Subscription) {
+    if (!this.alive(sub)) return
+    sub.abort.abort()
+    if (sub.retries >= (this.deps.maxReconnectAttempts ?? 5)) {
+      this.close()
+      sub.observer.onConnection('offline')
+      sub.observer.onError({
         code: 'reconnect_exhausted',
         message: 'Unable to reconnect. Use Retry connection.',
         retryable: true,
       })
       return
     }
-    const delay =
-      this.reconnectDelaysMs[Math.min(sub.reconnectAttempts, this.reconnectDelaysMs.length - 1)] ??
-      15000
-    sub.reconnectAttempts += 1
-    sub.options.onConnection('reconnecting')
-    sub.reconnectTimer = this.setTimeoutImpl?.(() => {
-      if (sub.closed) return
-      // Resync via GET before opening a new stream is owned by the controller;
-      // adapter reconnects the stream from lastAppliedSeq.
+    const delays = this.deps.reconnectDelaysMs ?? [1000, 2000, 4000, 8000, 15000]
+    const delay = delays[Math.min(sub.retries, delays.length - 1)] ?? 15000
+    sub.retries++
+    sub.observer.onConnection('reconnecting')
+    sub.timer = this.later(() => {
+      sub.timer = null
+      if (!this.alive(sub)) return
       sub.abort = new AbortController()
-      void this.openStream(sub)
-    }, delay) ?? null
+      void this.open(sub, true)
+    }, delay)
   }
-
-  private async requestJson(
+  private async json(
     method: string,
     path: string,
     body?: unknown,
     signal?: AbortSignal,
-    expectedStatus = 200,
+    expected = 200,
   ): Promise<unknown> {
-    this.assertAlive()
+    if (this.disposed) throw unavailableError('API disposed.')
+    const abort = new AbortController()
+    this.requests.add(abort)
+    const cancel = () => abort.abort(signal?.reason)
+    if (signal?.aborted) cancel()
+    else signal?.addEventListener('abort', cancel, { once: true })
+    let timedOut = false
+    const timeout = this.later(() => {
+      timedOut = true
+      abort.abort()
+    }, this.deps.requestTimeoutMs ?? 15_000)
     try {
-      const response = await this.fetchImpl(`${this.baseUrl}${path}`, {
+      const response = await this.fetchImpl(`${this.base}${path}`, {
         method,
         credentials: 'omit',
-        headers: body ? { 'Content-Type': 'application/json', Accept: 'application/json' } : { Accept: 'application/json' },
+        headers: body
+          ? { 'Content-Type': 'application/json', Accept: 'application/json' }
+          : { Accept: 'application/json' },
         body: body ? JSON.stringify(body) : undefined,
-        signal,
+        signal: abort.signal,
       })
       const text = await response.text()
       let json: unknown = null
-      if (text) {
-        try {
-          json = JSON.parse(text)
-        } catch {
-          throw unavailableError('Service returned non-JSON content.')
-        }
+      try {
+        json = text ? JSON.parse(text) : null
+      } catch {
+        if (response.status === expected) throw protocolError('Service returned non-JSON content.')
       }
-      if (response.status !== expectedStatus) {
-        throw normalizeHttpError(response.status, json)
-      }
+      if (response.status !== expected) throw normalizeHttpError(response.status, json)
       return json
     } catch (error) {
       if (error instanceof TransportError) throw error
-      if ((error as { name?: string })?.name === 'AbortError') throw error
+      if (timedOut)
+        throw unavailableError(
+          'The service did not respond in time. Retrying the same operation is safe.',
+        )
+      if (signal?.aborted || this.disposed) throw error
       throw unavailableError(
         'Cannot reach the roundtable API. Start a backend or switch VITE_ROUNDTABLE_MODE=mock.',
       )
-    }
-  }
-
-  private assertAlive(): void {
-    if (this.disposed) {
-      throw new TransportError({ code: 'disposed', message: 'API disposed.', retryable: false })
+    } finally {
+      this.clear(timeout)
+      signal?.removeEventListener('abort', cancel)
+      this.requests.delete(abort)
     }
   }
 }

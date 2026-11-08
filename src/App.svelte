@@ -30,9 +30,7 @@
     }
   })
 
-  const showSetup = $derived(
-    controller.viewPhase === 'setup' || controller.viewPhase === 'submitting',
-  )
+  const showSetup = $derived(controller.viewPhase !== 'viewing')
 
   const elapsedLabel = $derived.by(() => {
     const snap = controller.snapshot
@@ -51,7 +49,8 @@
 <div class="app">
   <AppHeader
     mode={controller.mode}
-    canNewMeeting={controller.viewPhase === 'setup' || (!!controller.snapshot && isTerminalStatus(controller.snapshot.status))}
+    canNewMeeting={controller.viewPhase === 'setup' ||
+      (!!controller.snapshot && isTerminalStatus(controller.snapshot.status))}
     needsCancelConfirm={!!controller.snapshot && !isTerminalStatus(controller.snapshot.status)}
     onNewMeeting={(force) => void controller.newMeeting(force)}
   />
@@ -62,17 +61,38 @@
     onRetry={() => void controller.retryConnection()}
   />
 
-  {#if controller.reloadNotice && showSetup}
-    <p class="notice">{controller.reloadNotice}</p>
-  {/if}
+  <section class="intro">
+    <div>
+      <span class="eyebrow">YOUR COLLABORATIVE THINKING SPACE</span>
+      <h1>
+        {showSetup
+          ? 'One question. A room full of possibilities.'
+          : 'Good ideas evolve in good company.'}
+      </h1>
+      <p>
+        {showSetup
+          ? 'Assemble your AI crew and explore the ideas between their answers.'
+          : 'Follow each perspective, the shared discussion, and what changed.'}
+      </p>
+    </div>
+    <span class="intro-mark" aria-hidden="true">✳</span>
+  </section>
 
-  <div class="layout" id="main">
+  <main class="layout" id="main">
     <RoundtableRoom
       config={controller.draft}
       snapshot={controller.snapshot}
       catalog={controller.catalog}
       selectedParticipantId={controller.selectedParticipantId}
-      onSelect={(id) => controller.selectParticipant(id)}
+      onSelect={(id) => {
+        controller.selectParticipant(id)
+        if (showSetup)
+          requestAnimationFrame(() =>
+            document
+              .getElementById(`editor-${id}`)
+              ?.scrollIntoView({ behavior: 'smooth', block: 'center' }),
+          )
+      }}
     />
 
     {#if showSetup}
@@ -84,7 +104,8 @@
             scenarios={controller.scenarios}
             scenarioId={controller.demoScenarioId}
             issues={controller.fieldErrors}
-            disabled={false}
+            disabled={controller.viewPhase === 'submitting'}
+            selectedParticipantId={controller.selectedParticipantId}
             submitting={controller.viewPhase === 'submitting'}
             createError={controller.createError}
             draftMessage={controller.draftMessage}
@@ -98,12 +119,32 @@
           />
         {:else if controller.createError}
           <p class="error" role="alert">{controller.createError}</p>
+          <button onclick={() => void controller.init()}>Retry catalog</button>
         {:else}
           <p>Loading catalog…</p>
         {/if}
       </div>
     {:else}
       <section class="run-slot" aria-label="Meeting run">
+        {#if controller.snapshot?.status === 'round_blocked'}<section
+            class="blocked"
+            aria-label="Meeting needs attention"
+          >
+            <div>
+              <strong>The crew is waiting for a response.</strong>
+              <p>
+                Retry the failed agent, or exclude them if at least two participants can continue.
+              </p>
+            </div>
+            {#each controller.snapshot.rounds
+              .find((r) => r.number === controller.snapshot?.currentRoundNumber)
+              ?.slots.filter((s) => s.status === 'failed') ?? [] as slot}<button
+                onclick={() => controller.selectParticipant(slot.participantId)}
+                >Review {controller.snapshot.config.participants.find(
+                  (p) => p.id === slot.participantId,
+                )?.name}</button
+              >{/each}
+          </section>{/if}
         <RoundProgress snapshot={controller.snapshot} {elapsedLabel} />
         <div class="toolbar">
           <RoundControls
@@ -111,16 +152,24 @@
             pending={controller.pendingCommand === 'cancel'}
             onStop={() => void controller.sendCommand({ type: 'cancel' })}
           />
-          <ExportMenu snapshot={controller.snapshot} />
+          <ExportMenu snapshot={controller.snapshot} mode={controller.mode} />
         </div>
         <TranscriptTabs
           snapshot={controller.snapshot}
+          mode={controller.mode}
           selectedTab={controller.selectedTab}
           onTab={(tab) => controller.setTab(tab)}
         />
       </section>
     {/if}
-  </div>
+  </main>
+  <footer class="app-footer">
+    <span>Many perspectives. No forced consensus.</span><span
+      >{controller.mode === 'mock'
+        ? 'Local demo · No live model calls'
+        : 'Connected API · Status from your service'}</span
+    >
+  </footer>
 </div>
 
 {#if controller.snapshot && controller.selectedParticipantId}
@@ -160,11 +209,11 @@
     top: 0.5rem;
   }
   .app {
-    max-width: 1100px;
+    max-width: 1140px;
     margin: 0 auto;
-    padding: 1rem 1rem 2rem;
+    padding: 0 28px 24px;
     display: grid;
-    gap: 0.85rem;
+    gap: 22px;
   }
   .layout {
     display: grid;
@@ -184,15 +233,79 @@
     flex-wrap: wrap;
     align-items: center;
   }
-  .notice {
-    margin: 0;
-    padding: 0.65rem 0.85rem;
-    border-radius: 12px;
-    background: var(--sky);
-    border: 1px solid var(--line);
-    color: var(--muted);
-  }
   .error {
     color: var(--danger);
+  }
+  .intro {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 9px 0 3px;
+    gap: 16px;
+  }
+  .eyebrow {
+    font: 9px monospace;
+    letter-spacing: 1.8px;
+    color: var(--muted);
+  }
+  h1 {
+    font-size: clamp(23px, 2.6vw, 31px);
+    font-weight: 650;
+    letter-spacing: -1px;
+    line-height: 1.2;
+    margin: 9px 0;
+  }
+  .intro p {
+    font-size: 12px;
+    color: var(--muted);
+    margin: 0;
+  }
+  .intro-mark {
+    font-size: 54px;
+    color: #bfb2e6;
+    line-height: 1;
+  }
+  .app-footer {
+    display: flex;
+    justify-content: space-between;
+    font-size: 10px;
+    color: var(--muted);
+    gap: 12px;
+    padding-top: 3px;
+    flex-wrap: wrap;
+  }
+  @media (max-width: 767px) {
+    .app {
+      padding: 0 14px 20px;
+      gap: 20px;
+    }
+    .intro-mark {
+      display: none;
+    }
+    .intro {
+      padding: 2px 0 0;
+    }
+    .eyebrow {
+      font-size: 8px;
+    }
+    h1 {
+      font-size: 26px;
+    }
+  }
+  .blocked {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    align-items: center;
+    background: var(--peach);
+    padding: 18px;
+    border: 1px solid #edd5c5;
+    border-radius: 14px;
+    font-size: 13px;
+  }
+  .blocked p {
+    margin: 4px 0 0;
+    font-size: 12px;
+    color: var(--muted);
   }
 </style>

@@ -1,7 +1,6 @@
 <script lang="ts">
   import type { Catalog, DiscussionConfig, RunSnapshot } from '../domain/types'
   import Roundtable from './Roundtable.svelte'
-  import ParticipantList from './ParticipantList.svelte'
 
   interface Props {
     config: DiscussionConfig
@@ -25,7 +24,7 @@
   })
 </script>
 
-<section class="room-wrap" aria-label="Office">
+<div class="room-wrap">
   <Roundtable
     {config}
     {snapshot}
@@ -34,27 +33,4 @@
     {selectedParticipantId}
     {onSelect}
   />
-  <div class="list-wrap">
-    <h2>Participants</h2>
-    <ParticipantList {config} {snapshot} {catalog} {selectedParticipantId} {onSelect} />
-  </div>
-</section>
-
-<style>
-  .room-wrap {
-    display: grid;
-    gap: 0.85rem;
-  }
-  .list-wrap {
-    display: none;
-  }
-  h2 {
-    margin: 0 0 0.5rem;
-    font-size: 1rem;
-  }
-  @media (max-width: 767px) {
-    .list-wrap {
-      display: block;
-    }
-  }
-</style>
+</div>

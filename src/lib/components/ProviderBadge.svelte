@@ -10,18 +10,44 @@
   const letter = $derived(name.trim().charAt(0).toUpperCase() || '?')
 </script>
 
-<span class="badge" class:compact title={modelName ? `${name} · ${modelName}` : name} data-icon={iconKey}>
+<span
+  class="badge"
+  class:compact
+  title={modelName ? `${name} · ${modelName}` : name}
+  data-icon={iconKey}
+>
   <span class="mark" aria-hidden="true">
     {#if iconKey === 'openai'}
-      <svg viewBox="0 0 16 16" width="12" height="12"><circle cx="8" cy="8" r="5.5" fill="none" stroke="currentColor" stroke-width="2" /><circle cx="8" cy="8" r="2" fill="currentColor" /></svg>
+      <svg viewBox="0 0 16 16" width="12" height="12"
+        ><circle cx="8" cy="8" r="5.5" fill="none" stroke="currentColor" stroke-width="2" /><circle
+          cx="8"
+          cy="8"
+          r="2"
+          fill="currentColor"
+        /></svg
+      >
     {:else if iconKey === 'anthropic'}
-      <svg viewBox="0 0 16 16" width="12" height="12"><path d="M8 2 L13 13 H3 Z" fill="currentColor" /></svg>
+      <svg viewBox="0 0 16 16" width="12" height="12"
+        ><path d="M8 2 L13 13 H3 Z" fill="currentColor" /></svg
+      >
     {:else if iconKey === 'grok'}
-      <svg viewBox="0 0 16 16" width="12" height="12"><path d="M3 8 L8 3 L13 8 L8 13 Z" fill="currentColor" /></svg>
+      <svg viewBox="0 0 16 16" width="12" height="12"
+        ><path d="M3 8 L8 3 L13 8 L8 13 Z" fill="currentColor" /></svg
+      >
     {:else if iconKey === 'google'}
-      <svg viewBox="0 0 16 16" width="12" height="12"><circle cx="5" cy="6" r="2" fill="currentColor" /><circle cx="11" cy="6" r="2" fill="currentColor" opacity="0.7" /><circle cx="8" cy="11" r="2" fill="currentColor" opacity="0.85" /></svg>
+      <svg viewBox="0 0 16 16" width="12" height="12"
+        ><circle cx="5" cy="6" r="2" fill="currentColor" /><circle
+          cx="11"
+          cy="6"
+          r="2"
+          fill="currentColor"
+          opacity="0.7"
+        /><circle cx="8" cy="11" r="2" fill="currentColor" opacity="0.85" /></svg
+      >
     {:else if iconKey === 'copilot'}
-      <svg viewBox="0 0 16 16" width="12" height="12"><rect x="3" y="4" width="10" height="8" rx="3" fill="currentColor" /></svg>
+      <svg viewBox="0 0 16 16" width="12" height="12"
+        ><rect x="3" y="4" width="10" height="8" rx="3" fill="currentColor" /></svg
+      >
     {:else}
       {letter}
     {/if}

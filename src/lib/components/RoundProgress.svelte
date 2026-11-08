@@ -12,7 +12,7 @@
 </script>
 
 {#if snapshot}
-  <div class="progress" aria-live="polite">
+  <div class="progress">
     <div>
       <strong>
         {#if round}

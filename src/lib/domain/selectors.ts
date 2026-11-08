@@ -1,9 +1,4 @@
-import type {
-  Opinion,
-  RoundSlot,
-  RoundState,
-  RunSnapshot,
-} from './types'
+import type { Opinion, RoundSlot, RoundState, RunSnapshot } from './types'
 
 export function currentRound(snapshot: RunSnapshot | null): RoundState | null {
   if (!snapshot?.currentRoundNumber) return null
@@ -24,7 +19,10 @@ export function slotFor(round: RoundState | null, participantId: string): RoundS
   return round?.slots.find((s) => s.participantId === participantId) ?? null
 }
 
-export function statusLabel(slot: RoundSlot | null, runStatus: RunSnapshot['status'] | null): string {
+export function statusLabel(
+  slot: RoundSlot | null,
+  runStatus: RunSnapshot['status'] | null,
+): string {
   if (!slot) return 'Waiting'
   switch (slot.status) {
     case 'pending':
@@ -94,7 +92,8 @@ export function comparisonRows(snapshot: RunSnapshot | null): ComparisonRow[] {
       })
       .filter((x): x is NonNullable<typeof x> => !!x)
 
-    const initial = published[0]?.published?.responses.find((r) => r.participantId === participant.id) ?? null
+    const initial =
+      published[0]?.published?.responses.find((r) => r.participantId === participant.id) ?? null
     const latest =
       [...published]
         .reverse()
@@ -120,7 +119,10 @@ export function comparisonRows(snapshot: RunSnapshot | null): ComparisonRow[] {
 export function activityEntries(snapshot: RunSnapshot | null): Array<{ id: string; text: string }> {
   if (!snapshot) return []
   const entries: Array<{ id: string; text: string }> = [
-    { id: `${snapshot.id}-created`, text: `Meeting created (${snapshot.config.participants.length} participants, ${snapshot.config.totalRounds} rounds).` },
+    {
+      id: `${snapshot.id}-created`,
+      text: `Meeting created (${snapshot.config.participants.length} participants, ${snapshot.config.totalRounds} rounds).`,
+    },
   ]
   for (const round of snapshot.rounds) {
     entries.push({
@@ -128,12 +130,17 @@ export function activityEntries(snapshot: RunSnapshot | null): Array<{ id: strin
       text: `Round ${round.number} started (${round.kind}).`,
     })
     for (const slot of round.slots) {
-      const last = slot.attempts.at(-1)
-      if (last?.status === 'failed') {
-        entries.push({
-          id: `${last.id}-fail`,
-          text: `${participantName(snapshot, slot.participantId)} failed in round ${round.number}: ${last.error?.message ?? 'error'}.`,
-        })
+      for (const attempt of slot.attempts) {
+        if (attempt.number > 1)
+          entries.push({
+            id: `${attempt.id}-retry`,
+            text: `${participantName(snapshot, slot.participantId)} retried in round ${round.number} (attempt ${attempt.number}).`,
+          })
+        if (attempt.error)
+          entries.push({
+            id: `${attempt.id}-error`,
+            text: `${participantName(snapshot, slot.participantId)} in round ${round.number}: ${attempt.error.message}`,
+          })
       }
       if (slot.status === 'skipped') {
         entries.push({
@@ -149,8 +156,10 @@ export function activityEntries(snapshot: RunSnapshot | null): Array<{ id: strin
       })
     }
   }
-  if (snapshot.status === 'completed') entries.push({ id: `${snapshot.id}-done`, text: 'Meeting completed.' })
-  if (snapshot.status === 'cancelled') entries.push({ id: `${snapshot.id}-cancel`, text: 'Meeting cancelled.' })
+  if (snapshot.status === 'completed')
+    entries.push({ id: `${snapshot.id}-done`, text: 'Meeting completed.' })
+  if (snapshot.status === 'cancelled')
+    entries.push({ id: `${snapshot.id}-cancel`, text: 'Meeting cancelled.' })
   if (snapshot.status === 'failed') {
     entries.push({
       id: `${snapshot.id}-failed`,
@@ -165,12 +174,10 @@ function participantName(snapshot: RunSnapshot, participantId: string): string {
 }
 
 export function unpublishedPartials(snapshot: RunSnapshot | null): Opinion[] {
-  if (!snapshot) return []
+  if (!snapshot || !['cancelled', 'failed'].includes(snapshot.status)) return []
   const round = currentRound(snapshot)
   if (!round || round.published) return []
-  return round.slots
-    .filter((s) => s.status === 'submitted' && s.response)
-    .map((s) => s.response!)
+  return round.slots.filter((s) => s.status === 'submitted' && s.response).map((s) => s.response!)
 }
 
 export function canRetry(snapshot: RunSnapshot | null, participantId: string): boolean {
@@ -186,7 +193,13 @@ export function canExclude(snapshot: RunSnapshot | null, participantId: string):
   const slot = slotFor(round, participantId)
   if (!slot || slot.status !== 'failed') return false
   const remainingPossible = round!.slots.filter(
-    (s) => s.participantId !== participantId && (s.status === 'submitted' || s.status === 'failed' || s.status === 'pending' || s.status === 'thinking' || s.status === 'reading'),
+    (s) =>
+      s.participantId !== participantId &&
+      (s.status === 'submitted' ||
+        s.status === 'failed' ||
+        s.status === 'pending' ||
+        s.status === 'thinking' ||
+        s.status === 'reading'),
   ).length
   // After exclusion, need at least two possible successful participants among remaining non-skipped.
   const viableAfter = round!.slots.filter((s) => {

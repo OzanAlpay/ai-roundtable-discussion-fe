@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { tick } from 'svelte'
   import type { RunSnapshot } from '../domain/types'
   import { unpublishedPartials } from '../domain/selectors'
   import ResponseCard from './ResponseCard.svelte'
@@ -6,11 +7,12 @@
   import ActivityLog from './ActivityLog.svelte'
 
   interface Props {
+    mode?: 'mock' | 'http'
     snapshot: RunSnapshot | null
     selectedTab: string
     onTab: (tab: string) => void
   }
-  let { snapshot, selectedTab, onTab }: Props = $props()
+  let { snapshot, selectedTab, onTab, mode = 'mock' }: Props = $props()
 
   const tabs = $derived.by(() => {
     const list = [{ id: 'overview', label: 'Overview' }]
@@ -35,7 +37,7 @@
         aria-controls={`panel-${tab.id}`}
         tabindex={selectedTab === tab.id ? 0 : -1}
         onclick={() => onTab(tab.id)}
-        onkeydown={(e) => {
+        onkeydown={async (e) => {
           const idx = tabs.findIndex((t) => t.id === selectedTab)
           if (e.key === 'ArrowRight') {
             e.preventDefault()
@@ -43,6 +45,16 @@
           } else if (e.key === 'ArrowLeft') {
             e.preventDefault()
             onTab(tabs[(idx - 1 + tabs.length) % tabs.length]!.id)
+          } else if (e.key === 'Home') {
+            e.preventDefault()
+            onTab(tabs[0]!.id)
+          } else if (e.key === 'End') {
+            e.preventDefault()
+            onTab(tabs.at(-1)!.id)
+          }
+          if (['ArrowRight', 'ArrowLeft', 'Home', 'End'].includes(e.key)) {
+            await tick()
+            document.getElementById(`tab-${selectedTab}`)?.focus()
           }
         }}
       >
@@ -58,11 +70,31 @@
   {:else if selectedTab === 'overview'}
     <div class="panel" role="tabpanel" id="panel-overview" aria-labelledby="tab-overview">
       <p>
-        {snapshot.config.participants.length} participants · {snapshot.config.totalRounds} rounds ·
-        status <strong>{snapshot.status}</strong>
+        {snapshot.config.participants.length} participants · {snapshot.config.totalRounds} rounds · status
+        <strong>{snapshot.status.replaceAll('_', ' ')}</strong>
       </p>
-      <p class="muted">Demo content only — responses are simulated fixtures.</p>
-      <p>{snapshot.config.question}</p>
+      {#if mode === 'mock'}<p class="muted">
+          Demo content only — responses are simulated fixtures.
+        </p>{/if}
+      <h2 class="topic">{snapshot.config.question}</h2>
+      <div class="stages">
+        {#each Array.from({ length: snapshot.config.totalRounds }, (_, i) => i + 1) as n}<button
+            onclick={() => onTab(`round-${n}`)}
+            ><span class="step">0{n}</span><strong
+              >{n === 1 ? 'Think independently' : 'Reconsider together'}</strong
+            ><small
+              >{snapshot.rounds.find((r) => r.number === n)?.published
+                ? 'Published · View responses'
+                : snapshot.currentRoundNumber === n
+                  ? 'In progress · Answers stay private'
+                  : 'Up next'}</small
+            ></button
+          >{/each}
+      </div>
+      {#if snapshot.status === 'completed'}<button
+          class="compare-link"
+          onclick={() => onTab('comparison')}>See what changed →</button
+        >{/if}
       {#if partials.length}
         <div class="partial">
           <h3>Unpublished partial results</h3>
@@ -143,5 +175,38 @@
   }
   h3 {
     margin: 0;
+  }
+  .topic {
+    font-size: 20px;
+    margin: 0;
+    letter-spacing: -0.5px;
+  }
+  .stages {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 12px;
+  }
+  .stages button {
+    display: grid;
+    text-align: left;
+    padding: 18px;
+    background: #f8f9fc;
+    gap: 8px;
+  }
+  .step {
+    font: 12px monospace;
+    color: var(--accent);
+  }
+  .stages strong {
+    font-size: 13px;
+  }
+  .stages small {
+    color: var(--muted);
+    font-size: 11px;
+  }
+  .compare-link {
+    justify-self: start;
+    color: var(--accent);
+    font-size: 12px;
   }
 </style>

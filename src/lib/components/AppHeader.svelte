@@ -3,84 +3,138 @@
     mode: 'mock' | 'http'
     canNewMeeting: boolean
     needsCancelConfirm: boolean
-    onNewMeeting: (forceCancel: boolean) => void
+    onNewMeeting: (force: boolean) => void
   }
   let { mode, canNewMeeting, needsCancelConfirm, onNewMeeting }: Props = $props()
   let confirmOpen = $state(false)
 </script>
 
 <header class="header">
-  <div>
-    <p class="brand">Copilot Roundtable</p>
-    <p class="demo">DEMO · Simulated agents{mode === 'http' ? ' · HTTP transport' : ''}</p>
+  <div class="brand">
+    <span class="logo" aria-hidden="true"
+      ><svg viewBox="0 0 32 32"
+        ><ellipse
+          cx="16"
+          cy="18"
+          rx="11"
+          ry="6"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+        /><circle cx="16" cy="7" r="3" fill="currentColor" /><circle
+          cx="5"
+          cy="14"
+          r="2"
+          fill="currentColor"
+        /><circle cx="27" cy="14" r="2" fill="currentColor" /></svg
+      ></span
+    ><span>Copilot <strong>Roundtable</strong><small>A meeting of different minds</small></span>
   </div>
   <div class="actions">
-    {#if confirmOpen}
-      <span class="confirm">Cancel the active meeting and start a new draft?</span>
-      <button type="button" onclick={() => { confirmOpen = false; onNewMeeting(true) }}>Cancel & new</button>
-      <button type="button" class="ghost" onclick={() => (confirmOpen = false)}>Stay</button>
-    {:else}
-      <button
-        type="button"
+    <span class="mode"
+      ><i></i>{mode === 'mock' ? 'DEMO · Simulated agents' : 'Connected API mode'}</span
+    >
+    {#if confirmOpen}<span class="confirm">Stop this meeting and start fresh?</span><button
+        onclick={() => {
+          confirmOpen = false
+          onNewMeeting(true)
+        }}>Cancel & new</button
+      ><button onclick={() => (confirmOpen = false)}>Stay</button>
+    {:else}<button
+        class="new"
         disabled={!canNewMeeting && !needsCancelConfirm}
         onclick={() => {
           if (needsCancelConfirm) confirmOpen = true
           else onNewMeeting(false)
-        }}
-      >
-        New meeting
-      </button>
-    {/if}
+        }}><span aria-hidden="true">＋</span> New meeting</button
+      >{/if}
   </div>
 </header>
 
 <style>
   .header {
     display: flex;
-    justify-content: space-between;
-    gap: 1rem;
     align-items: center;
+    justify-content: space-between;
+    gap: 20px;
+    padding: 22px 0 25px;
+    border-bottom: 1px solid var(--line);
     flex-wrap: wrap;
-    padding: 0.85rem 1rem;
-    background: color-mix(in srgb, var(--surface) 88%, var(--sage));
-    border: 1px solid var(--line);
-    border-radius: var(--radius-card);
   }
   .brand {
-    margin: 0;
-    font-size: clamp(1.45rem, 2.4vw, 2rem);
-    font-weight: 800;
-    letter-spacing: -0.02em;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 18px;
+    letter-spacing: -0.5px;
   }
-  .demo {
-    margin: 0.15rem 0 0;
-    color: var(--accent);
-    font-weight: 650;
-    font-size: 0.9rem;
+  .brand small {
+    display: block;
+    font-size: 11px;
+    color: var(--muted);
+    letter-spacing: 0.2px;
+    margin-top: 2px;
+  }
+  .logo {
+    width: 42px;
+    height: 42px;
+    display: grid;
+    place-items: center;
+    color: white;
+    background: var(--accent);
+    border-radius: 13px;
+    box-shadow: 0 5px 14px #6551ce24;
+  }
+  .logo svg {
+    width: 30px;
+    height: 30px;
   }
   .actions {
     display: flex;
-    flex-wrap: wrap;
-    gap: 0.5rem;
     align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
   }
-  button {
-    min-height: 44px;
-    border-radius: var(--radius-control);
-    border: 1px solid var(--line);
-    background: var(--surface);
-    padding: 0 0.9rem;
-    cursor: pointer;
+  .mode {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--muted);
   }
-  button:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
+  i {
+    height: 6px;
+    width: 6px;
+    border-radius: 50%;
+    background: #32957a;
   }
-  .ghost {
-    background: transparent;
+  .new {
+    font-size: 12px;
+    font-weight: 600;
+    box-shadow: 0 2px 3px #00000003;
+  }
+  .new span {
+    font-size: 17px;
+    margin-right: 5px;
   }
   .confirm {
-    font-size: 0.9rem;
-    color: var(--muted);
+    font-size: 12px;
+  }
+  @media (max-width: 600px) {
+    .header {
+      padding: 16px 0;
+      gap: 12px;
+    }
+    .brand {
+      font-size: 16px;
+    }
+    .actions {
+      width: 100%;
+      justify-content: space-between;
+    }
+    .mode {
+      font-size: 10px;
+    }
   }
 </style>

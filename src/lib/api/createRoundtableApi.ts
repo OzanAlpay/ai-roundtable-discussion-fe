@@ -12,8 +12,9 @@ export interface CreateApiResult {
 }
 
 export function resolveMode(raw: string | undefined): RoundtableMode {
-  if (raw === 'http') return 'http'
-  return 'mock'
+  if (raw === 'http' || raw === 'mock') return raw
+  if (!raw) return 'mock'
+  throw new Error(`Unknown roundtable mode: ${raw}. Use mock or http.`)
 }
 
 export function createRoundtableApi(options?: {

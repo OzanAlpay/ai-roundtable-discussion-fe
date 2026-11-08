@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { DemoScenario } from '../api/mock/scenarios'
+  import type { DemoScenario } from '../domain/types'
   import type { DemoScenarioId } from '../domain/types'
 
   interface Props {
@@ -16,11 +16,7 @@
   <p>Mock-only pacing and failure scripts. Not part of discussion configuration.</p>
   <label>
     <span class="sr-only">Scenario</span>
-    <select
-      {disabled}
-      value={value}
-      onchange={(e) => onChange(e.currentTarget.value as DemoScenarioId)}
-    >
+    <select {disabled} {value} onchange={(e) => onChange(e.currentTarget.value as DemoScenarioId)}>
       {#each scenarios as scenario}
         <option value={scenario.id}>{scenario.label}</option>
       {/each}

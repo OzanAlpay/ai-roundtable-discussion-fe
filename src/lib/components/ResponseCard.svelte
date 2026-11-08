@@ -15,11 +15,12 @@
   )
 </script>
 
-<article class="card">
+<article class="card" data-response-id={opinion.id}>
   <header>
     <h3>{participant?.name ?? opinion.participantId}</h3>
     <p>
-      {participant?.roleLabel ?? 'Participant'} · {label?.providerName ?? ''} · {label?.modelName ?? ''}
+      {participant?.roleLabel ?? 'Participant'} · {label?.providerName ?? ''} · {label?.modelName ??
+        ''}
     </p>
   </header>
   {#if conceal}
@@ -62,12 +63,22 @@
       <p class="reason"><strong>Revision reason:</strong> {opinion.revision.reason}</p>
     {/if}
     {#if opinion.revision.influencedBy.length}
-      <p class="refs">
-        Influenced by:
+      <div class="sources">
+        <h4>Perspectives that influenced this response</h4>
         {#each opinion.revision.influencedBy as ref}
-          <span class="ref">R{ref.roundNumber}/{ref.participantId.slice(0, 8)}…</span>
+          {@const author = snapshot.config.participants.find((p) => p.id === ref.participantId)}
+          {@const source = snapshot.rounds
+            .find((r) => r.number === ref.roundNumber)
+            ?.published?.responses.find((o) => o.id === ref.responseId)}
+          {#if source}<details>
+              <summary>{author?.name ?? 'Participant'} · Round {ref.roundNumber} ↗</summary>
+              <blockquote>
+                <strong>{source.position}</strong>
+                <p>{source.rationale}</p>
+              </blockquote>
+            </details>{/if}
         {/each}
-      </p>
+      </div>
     {/if}
   {/if}
 </article>
@@ -88,7 +99,6 @@
   header p,
   footer,
   .reason,
-  .refs,
   .conceal {
     margin: 0;
     color: var(--muted);
@@ -110,15 +120,23 @@
   .position {
     margin: 0;
   }
-  .ref {
-    display: inline-block;
-    margin-right: 0.35rem;
-    padding: 0.1rem 0.35rem;
-    border-radius: 6px;
-    background: var(--sage);
-    font-size: 0.8rem;
-  }
   .conceal {
     font-style: italic;
+  }
+  .sources details {
+    background: var(--lavender);
+    padding: 10px 14px;
+    border-radius: 10px;
+    margin-top: 8px;
+    font-size: 12px;
+  }
+  .sources summary {
+    cursor: pointer;
+    min-height: 26px;
+  }
+  .sources blockquote {
+    margin: 10px 0 0;
+    padding: 8px 12px;
+    border-left: 2px solid var(--accent);
   }
 </style>

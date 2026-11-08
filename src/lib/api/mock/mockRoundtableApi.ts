@@ -24,7 +24,6 @@ import {
   getSampleRound1,
   illustrativeOpinion,
   isSampleQuestion,
-  providerModelLabels,
   sampleRound2,
   sampleRound3,
 } from './fixtures'
@@ -47,6 +46,8 @@ export interface MockRoundtableApiOptions {
 }
 
 interface Subscriber {
+  onSnapshot?: (snapshot: RunSnapshot) => void
+  paused?: boolean
   afterSeq: number
   onEvent: (event: RunEvent) => void
   onConnection: (state: ConnectionState) => void
@@ -60,6 +61,8 @@ interface StoredRun {
   cancels: Cancel[]
   behavior: ScenarioBehavior
   retryCount: Map<string, number>
+  scenario: DemoScenarioId
+  injected: boolean
   createRequestId: Id
 }
 
@@ -90,6 +93,7 @@ export class MockRoundtableApi implements RoundtableApi {
   private readonly subscribers = new Map<Id, Set<Subscriber>>()
   private readonly createIdempotency = new Map<Id, IdempotencyRecord>()
   private readonly commandIdempotency = new Map<string, IdempotencyRecord>()
+  private connectionCancels: Cancel[] = []
   private disposed = false
   private nextIds = 1
 
@@ -128,7 +132,10 @@ export class MockRoundtableApi implements RoundtableApi {
     const existing = this.createIdempotency.get(input.requestId)
     if (existing) {
       if (existing.bodyKey !== bodyKey(input.config)) {
-        throw validationError('Idempotency key reused with a different body.', 'idempotency_mismatch')
+        throw validationError(
+          'Idempotency key reused with a different body.',
+          'idempotency_mismatch',
+        )
       }
       return clone(existing.snapshot)
     }
@@ -150,7 +157,9 @@ export class MockRoundtableApi implements RoundtableApi {
       config,
       participantLabels: config.participants.map((p) => ({
         participantId: p.id,
-        ...providerModelLabels(p),
+        providerName:
+          this.catalog.providers.find((x) => x.id === p.providerId)?.name ?? p.providerId,
+        modelName: this.catalog.models.find((x) => x.id === p.modelId)?.name ?? p.modelId,
       })),
       excludedParticipantIds: [],
       currentRoundNumber: null,
@@ -163,6 +172,8 @@ export class MockRoundtableApi implements RoundtableApi {
 
     const stored: StoredRun = {
       snapshot,
+      scenario: this.scenario,
+      injected: false,
       events: [],
       inputSnapshots: new Map(),
       cancels: [],
@@ -201,8 +212,11 @@ export class MockRoundtableApi implements RoundtableApi {
     const key = `${runId}:${context.requestId}`
     const existing = this.commandIdempotency.get(key)
     if (existing) {
-      if (existing.bodyKey !== bodyKey(command)) {
-        throw validationError('Idempotency key reused with a different body.', 'idempotency_mismatch')
+      if (existing.bodyKey !== bodyKey({ command, expectedRevision: context.expectedRevision })) {
+        throw validationError(
+          'Idempotency key reused with a different body.',
+          'idempotency_mismatch',
+        )
       }
       return clone(existing.snapshot)
     }
@@ -224,7 +238,7 @@ export class MockRoundtableApi implements RoundtableApi {
     }
 
     this.commandIdempotency.set(key, {
-      bodyKey: bodyKey(command),
+      bodyKey: bodyKey({ command, expectedRevision: context.expectedRevision }),
       snapshot: clone(run.snapshot),
     })
     return clone(run.snapshot)
@@ -234,6 +248,7 @@ export class MockRoundtableApi implements RoundtableApi {
     runId: Id,
     options: {
       afterSeq: number
+      onSnapshot?: (snapshot: RunSnapshot) => void
       onEvent: (event: RunEvent) => void
       onConnection: (state: ConnectionState) => void
       onError: (error: PublicError) => void
@@ -257,9 +272,15 @@ export class MockRoundtableApi implements RoundtableApi {
     options.onConnection('connecting')
     options.onConnection('connected')
 
-    for (const event of run.events) {
-      if (event.seq > options.afterSeq) options.onEvent(clone(event))
-    }
+    queueMicrotask(() => {
+      for (const event of [...run.events]) {
+        if (!set!.has(subscriber)) break
+        if (event.seq > subscriber.afterSeq) {
+          subscriber.afterSeq = event.seq
+          options.onEvent(clone(event))
+        }
+      }
+    })
 
     return () => {
       set!.delete(subscriber)
@@ -269,6 +290,8 @@ export class MockRoundtableApi implements RoundtableApi {
 
   dispose(): void {
     this.disposed = true
+    for (const cancel of this.connectionCancels) cancel()
+    this.connectionCancels = []
     for (const run of this.runs.values()) {
       for (const cancel of run.cancels) cancel()
       run.cancels = []
@@ -277,18 +300,12 @@ export class MockRoundtableApi implements RoundtableApi {
   }
 
   private assertAlive(): void {
-    if (this.disposed) throw new TransportError({ code: 'disposed', message: 'API disposed.', retryable: false })
+    if (this.disposed)
+      throw new TransportError({ code: 'disposed', message: 'API disposed.', retryable: false })
   }
 
   private id(prefix: string): string {
     return `${prefix}-${this.nextIds++}`
-  }
-
-  private schedule(fn: () => void, ms: number): void {
-    // Find owning run via closure; cancels tracked per-run by callers.
-    const cancel = this.clock.setTimeout(fn, ms)
-    // Best-effort: attach to most recently touched run is handled by callers via trackCancel.
-    void cancel
   }
 
   private trackCancel(run: StoredRun, cancel: Cancel): void {
@@ -330,8 +347,43 @@ export class MockRoundtableApi implements RoundtableApi {
 
     const subs = this.subscribers.get(run.snapshot.id)
     if (!subs) return
+    if (!run.injected && event.seq >= 6 && run.scenario === 'malformed-gapped-event') {
+      run.injected = true
+      return
+    }
+    if (!run.injected && event.seq >= 6 && run.scenario === 'disconnect-reconnect') {
+      run.injected = true
+      for (const sub of subs) {
+        sub.paused = true
+        sub.onConnection('reconnecting')
+      }
+      const resume = this.clock.setTimeout(
+        () => {
+          for (const sub of this.subscribers.get(run.snapshot.id) ?? []) {
+            sub.paused = false
+            if (sub.onSnapshot) {
+              sub.afterSeq = run.snapshot.lastEventSeq
+              sub.onSnapshot(clone(run.snapshot))
+            } else
+              for (const past of run.events) {
+                if (past.seq > sub.afterSeq) {
+                  sub.afterSeq = past.seq
+                  sub.onEvent(clone(past))
+                }
+              }
+            sub.onConnection(this.isTerminal(run.snapshot.status) ? 'closed' : 'connected')
+          }
+        },
+        this.humanDelays ? 1800 : 50,
+      )
+      this.connectionCancels.push(resume)
+      return
+    }
     for (const sub of [...subs]) {
-      if (event.seq > sub.afterSeq) sub.onEvent(clone(event))
+      if (!sub.paused && event.seq > sub.afterSeq) {
+        sub.afterSeq = event.seq
+        sub.onEvent(clone(event))
+      }
     }
   }
 
@@ -351,7 +403,7 @@ export class MockRoundtableApi implements RoundtableApi {
       run.inputSnapshots.set(prev.id, {
         id: prev.id,
         roundNumber: prev.number,
-        responses: clone(prev.responses),
+        responses: deepFreeze(clone(prev.responses)),
       })
     }
 
@@ -401,7 +453,8 @@ export class MockRoundtableApi implements RoundtableApi {
       error: null,
     }
     slot.attempts = [...slot.attempts, attempt]
-    slot.status = attempt.status === 'thinking' || attempt.status === 'reading' ? attempt.status : 'pending'
+    slot.status =
+      attempt.status === 'thinking' || attempt.status === 'reading' ? attempt.status : 'pending'
     slot.response = null
     this.patchRound(run, round)
     this.emit(run, { type: 'participant.updated', roundNumber, participantId })
@@ -409,42 +462,70 @@ export class MockRoundtableApi implements RoundtableApi {
     const delay = this.attemptDelay(run, participantId, attemptNumber)
     const timeoutMs = run.snapshot.config.attemptTimeoutMs
     const shouldTimeout =
-      !!run.behavior.timeoutFirstAttemptFor?.includes(participantId) && attemptNumber === 1
+      roundNumber === 1 &&
+      !!run.behavior.timeoutFirstAttemptFor?.includes(participantId) &&
+      attemptNumber === 1
     const shouldFail =
       (!!run.behavior.failFirstAttemptFor?.includes(participantId) && attemptNumber === 1) ||
       !!run.behavior.failPermanentlyFor?.includes(participantId)
 
     if (roundNumber > 1) {
-      this.scheduleOn(run, () => {
-        this.updateAttemptStatus(run, roundNumber, participantId, attempt.id, 'thinking')
-      }, Math.min(200, delay / 3))
+      this.scheduleOn(
+        run,
+        () => {
+          this.updateAttemptStatus(run, roundNumber, participantId, attempt.id, 'thinking')
+        },
+        Math.min(200, delay / 3),
+      )
     }
 
     if (shouldTimeout) {
-      this.scheduleOn(run, () => {
+      this.scheduleOn(
+        run,
+        () => {
+          this.failAttempt(run, roundNumber, participantId, attempt.id, {
+            code: 'timeout',
+            message: 'Participant attempt timed out.',
+            retryable: true,
+          })
+        },
+        timeoutMs,
+      )
+      return
+    }
+
+    if (shouldFail) {
+      this.scheduleOn(
+        run,
+        () => {
+          this.failAttempt(run, roundNumber, participantId, attempt.id, {
+            code: 'model_error',
+            message: 'Simulated participant failure.',
+            retryable: !run.behavior.failPermanentlyFor?.includes(participantId),
+          })
+        },
+        delay,
+      )
+      return
+    }
+
+    this.scheduleOn(
+      run,
+      () =>
         this.failAttempt(run, roundNumber, participantId, attempt.id, {
           code: 'timeout',
           message: 'Participant attempt timed out.',
           retryable: true,
-        })
-      }, Math.min(timeoutMs, this.humanDelays ? 1200 : 50))
-      return
-    }
-
-    if (shouldFail && !(shouldTimeout)) {
-      this.scheduleOn(run, () => {
-        this.failAttempt(run, roundNumber, participantId, attempt.id, {
-          code: 'model_error',
-          message: 'Simulated participant failure.',
-          retryable: !run.behavior.failPermanentlyFor?.includes(participantId),
-        })
-      }, delay)
-      return
-    }
-
-    this.scheduleOn(run, () => {
-      this.succeedAttempt(run, roundNumber, participantId, attempt.id)
-    }, delay)
+        }),
+      timeoutMs,
+    )
+    this.scheduleOn(
+      run,
+      () => {
+        this.succeedAttempt(run, roundNumber, participantId, attempt.id)
+      },
+      delay,
+    )
   }
 
   private attemptDelay(run: StoredRun, participantId: Id, attemptNumber: number): number {
@@ -467,7 +548,14 @@ export class MockRoundtableApi implements RoundtableApi {
     const round = run.snapshot.rounds.find((r) => r.number === roundNumber)
     const slot = round?.slots.find((s) => s.participantId === participantId)
     const attempt = slot?.attempts.find((a) => a.id === attemptId)
-    if (!round || !slot || !attempt || attempt.status === 'succeeded' || attempt.status === 'failed' || attempt.status === 'cancelled') {
+    if (
+      !round ||
+      !slot ||
+      !attempt ||
+      attempt.status === 'succeeded' ||
+      attempt.status === 'failed' ||
+      attempt.status === 'cancelled'
+    ) {
       return
     }
     attempt.status = status
@@ -476,7 +564,12 @@ export class MockRoundtableApi implements RoundtableApi {
     this.emit(run, { type: 'participant.updated', roundNumber, participantId })
   }
 
-  private succeedAttempt(run: StoredRun, roundNumber: number, participantId: Id, attemptId: Id): void {
+  private succeedAttempt(
+    run: StoredRun,
+    roundNumber: number,
+    participantId: Id,
+    attemptId: Id,
+  ): void {
     if (this.isTerminal(run.snapshot.status)) return
     const round = run.snapshot.rounds.find((r) => r.number === roundNumber)
     const slot = round?.slots.find((s) => s.participantId === participantId)
@@ -542,7 +635,7 @@ export class MockRoundtableApi implements RoundtableApi {
     if (!fixture) {
       const prevOpinion =
         roundNumber > 1
-          ? this.previousResponses(run, roundNumber - 1)[participantId] ?? null
+          ? (this.previousResponses(run, roundNumber - 1)[participantId] ?? null)
           : null
       fixture = illustrativeOpinion(participant, roundNumber, question, prevOpinion)
     }
@@ -558,7 +651,8 @@ export class MockRoundtableApi implements RoundtableApi {
   }
 
   private previousResponses(run: StoredRun, roundNumber: number): Record<string, Opinion> {
-    const published = run.snapshot.rounds.find((r) => r.number === roundNumber)?.published
+    const round = run.snapshot.rounds.find((r) => r.number === roundNumber + 1)
+    const published = round?.inputSnapshotId ? run.inputSnapshots.get(round.inputSnapshotId) : null
     const map: Record<string, Opinion> = {}
     for (const response of published?.responses ?? []) map[response.participantId] = response
     return map
@@ -575,8 +669,8 @@ export class MockRoundtableApi implements RoundtableApi {
     const round = run.snapshot.rounds.find((r) => r.number === roundNumber)
     if (!round || round.published || this.isTerminal(run.snapshot.status)) return
 
-    const unsettled = round.slots.some((s) =>
-      s.status === 'pending' || s.status === 'reading' || s.status === 'thinking',
+    const unsettled = round.slots.some(
+      (s) => s.status === 'pending' || s.status === 'reading' || s.status === 'thinking',
     )
     if (unsettled) return
 
@@ -619,7 +713,7 @@ export class MockRoundtableApi implements RoundtableApi {
     run.inputSnapshots.set(published.id, {
       id: published.id,
       roundNumber,
-      responses: clone(responses),
+      responses: deepFreeze(clone(responses)),
     })
     run.snapshot = {
       ...run.snapshot,
@@ -635,11 +729,17 @@ export class MockRoundtableApi implements RoundtableApi {
         endedAt: iso(this.clock),
         currentRoundNumber: roundNumber,
       }
+      for (const cancel of run.cancels) cancel()
+      run.cancels = []
       this.emit(run, { type: 'run.completed' })
       return
     }
 
-    this.scheduleOn(run, () => this.startRound(run.snapshot.id, roundNumber + 1), this.humanDelays ? 400 : 0)
+    this.scheduleOn(
+      run,
+      () => this.startRound(run.snapshot.id, roundNumber + 1),
+      this.humanDelays ? 400 : 0,
+    )
   }
 
   private retryParticipant(run: StoredRun, roundNumber: number, participantId: Id): void {
@@ -672,9 +772,13 @@ export class MockRoundtableApi implements RoundtableApi {
       throw conflictError('Only failed participants can be excluded.')
     }
 
-    const viableAfter = round.slots.filter((s) => s.participantId !== participantId && s.status !== 'skipped').length
+    const viableAfter = round.slots.filter(
+      (s) => s.participantId !== participantId && s.status !== 'skipped',
+    ).length
     if (viableAfter < 2) {
-      throw validationError('Exclusion would leave fewer than two possible successful participants.')
+      throw validationError(
+        'Exclusion would leave fewer than two possible successful participants.',
+      )
     }
 
     slot.status = 'skipped'
@@ -687,8 +791,8 @@ export class MockRoundtableApi implements RoundtableApi {
     this.emit(run, { type: 'participant.excluded', roundNumber, participantId })
 
     const unresolvedFailures = round.slots.some((s) => s.status === 'failed')
-    const unsettled = round.slots.some((s) =>
-      s.status === 'pending' || s.status === 'reading' || s.status === 'thinking',
+    const unsettled = round.slots.some(
+      (s) => s.status === 'pending' || s.status === 'reading' || s.status === 'thinking',
     )
     if (!unresolvedFailures && !unsettled) {
       this.publishRound(run, roundNumber)

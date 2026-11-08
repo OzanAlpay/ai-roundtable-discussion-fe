@@ -1,3 +1,4 @@
+import { publicErrorSchema } from '../domain/schemas'
 import type { PublicError } from '../domain/types'
 
 export class TransportError extends Error {
@@ -29,13 +30,12 @@ export function unavailableError(message: string): TransportError {
 }
 
 export function normalizeHttpError(status: number, body: unknown): TransportError {
-  const parsed = body as { error?: PublicError } | null
-  if (parsed?.error?.code && parsed.error.message) {
-    return new TransportError(parsed.error, status)
-  }
+  const parsed = publicErrorSchema.safeParse((body as { error?: unknown } | null)?.error)
+  if (parsed.success) return new TransportError(parsed.data, status)
   if (status === 404) return notFoundError('Run or resource not found.')
   if (status === 409) return conflictError('The meeting state changed. Refresh and try again.')
-  if (status === 400 || status === 422) return validationError('The request was rejected by the service.')
+  if (status === 400 || status === 422)
+    return validationError('The request was rejected by the service.')
   if (status >= 500) return unavailableError('The roundtable service is temporarily unavailable.')
   return unavailableError(`Unexpected HTTP status ${status}.`)
 }

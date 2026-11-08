@@ -18,7 +18,9 @@ describe('SseParser', () => {
 
   it('supports multiline data and comment heartbeats', () => {
     const parser = new SseParser()
-    const messages = parser.push(': keep-alive\n\nid: 2\nevent: roundtable\ndata: line1\ndata: line2\n\n')
+    const messages = parser.push(
+      ': keep-alive\n\nid: 2\nevent: roundtable\ndata: line1\ndata: line2\n\n',
+    )
     expect(messages).toHaveLength(2)
     expect(messages[0]!.comments[0]).toContain('keep-alive')
     expect(messages[1]!.data).toBe('line1\nline2')

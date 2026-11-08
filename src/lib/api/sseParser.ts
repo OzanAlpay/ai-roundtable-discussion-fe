@@ -4,78 +4,61 @@ export interface SseMessage {
   data: string
   comments: string[]
 }
-
-/**
- * Incremental SSE parser supporting CRLF/LF, multiline data, comments,
- * partial chunks, and incomplete final records.
- */
+/** Incremental line framing: CRLF may span chunks, and EOF never terminates a record. */
 export class SseParser {
-  private buffer = ''
-
+  private line = ''
+  private previousCR = false
+  private record: string[] = []
+  private size = 0
   push(chunk: string): SseMessage[] {
-    this.buffer += chunk
     const messages: SseMessage[] = []
-    // Normalize to \n while preserving content; treat \r\n and bare \r as line ends.
-    this.buffer = this.buffer.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
-
-    while (true) {
-      const boundary = this.buffer.indexOf('\n\n')
-      if (boundary === -1) break
-      const raw = this.buffer.slice(0, boundary)
-      this.buffer = this.buffer.slice(boundary + 2)
-      const parsed = parseRecord(raw)
-      if (parsed) messages.push(parsed)
+    for (const ch of chunk) {
+      if (this.previousCR) {
+        this.previousCR = false
+        if (ch === '\n') continue
+      }
+      if (ch === '\r' || ch === '\n') {
+        if (this.line === '') {
+          const parsed = parseRecord(this.record)
+          if (parsed) messages.push(parsed)
+          this.record = []
+          this.size = 0
+        } else this.record.push(this.line)
+        this.line = ''
+        this.previousCR = ch === '\r'
+      } else {
+        this.line += ch
+        this.size++
+        if (this.size > 4_000_000) throw new Error('SSE record is too large')
+      }
     }
     return messages
   }
-
   flush(): SseMessage[] {
-    if (!this.buffer.trim()) {
-      this.buffer = ''
-      return []
-    }
-    const parsed = parseRecord(this.buffer)
-    this.buffer = ''
-    return parsed ? [parsed] : []
+    this.line = ''
+    this.record = []
+    this.previousCR = false
+    this.size = 0
+    return []
   }
 }
-
-function parseRecord(raw: string): SseMessage | null {
-  const lines = raw.split('\n')
-  let id: string | null = null
-  let event: string | null = null
-  const dataLines: string[] = []
-  const comments: string[] = []
-
+function parseRecord(lines: string[]): SseMessage | null {
+  let id: string | null = null,
+    event: string | null = null
+  const data: string[] = [],
+    comments: string[] = []
   for (const line of lines) {
     if (line.startsWith(':')) {
       comments.push(line.slice(1).trimStart())
       continue
     }
     const colon = line.indexOf(':')
-    const field = colon === -1 ? line : line.slice(0, colon)
-    let value = colon === -1 ? '' : line.slice(colon + 1)
+    const field = colon < 0 ? line : line.slice(0, colon)
+    let value = colon < 0 ? '' : line.slice(colon + 1)
     if (value.startsWith(' ')) value = value.slice(1)
-    switch (field) {
-      case 'id':
-        id = value
-        break
-      case 'event':
-        event = value
-        break
-      case 'data':
-        dataLines.push(value)
-        break
-      default:
-        break
-    }
+    if (field === 'id' && !value.includes('\0')) id = value
+    else if (field === 'event') event = value
+    else if (field === 'data') data.push(value)
   }
-
-  if (!dataLines.length && !event && id == null && !comments.length) return null
-  return {
-    id,
-    event,
-    data: dataLines.join('\n'),
-    comments,
-  }
+  return data.length || comments.length ? { id, event, data: data.join('\n'), comments } : null
 }
