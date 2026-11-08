@@ -2,6 +2,7 @@
   import type { Catalog, ParticipantConfig } from '../domain/types'
   import { ROLE_PRESETS } from '../domain/types'
   import { DEFAULT_ROLE_INSTRUCTIONS } from '../domain/roles'
+  import { modelColorKey } from '../domain/modelColor'
   import AgentAvatar from './AgentAvatar.svelte'
   import ModelPicker from './ModelPicker.svelte'
 
@@ -39,9 +40,7 @@
   const modelName = $derived(
     catalog.models.find((m) => m.id === participant.modelId)?.name ?? 'Choose a model',
   )
-  const iconKey = $derived(
-    catalog.providers.find((p) => p.id === participant.providerId)?.iconKey ?? 'neutral',
-  )
+  const iconKey = $derived(modelColorKey(catalog.models.find((m) => m.id === participant.modelId)))
   function patch(partial: Partial<ParticipantConfig>) {
     onChange({ ...participant, ...partial })
   }

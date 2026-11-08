@@ -26,38 +26,39 @@
 >
   <ellipse cx="50" cy="101" rx="32" ry="7" fill="#101c32" opacity=".28" />
   <g class="crew">
-    <rect x="13" y="44" width="19" height="37" rx="9" class="pack" />
+    <ellipse cx="36" cy="95" rx="10" ry="6" class="pack" />
+    <ellipse cx="64" cy="95" rx="10" ry="6" class="pack" />
+    <rect x="17" y="58" width="11" height="21" rx="5.5" class="pack" />
+    <rect x="72" y="58" width="11" height="21" rx="5.5" class="pack" />
+    <rect x="26" y="30" width="48" height="62" rx="22" class="body" />
     <path
-      d="M29 79V96Q29 101 36 101H43Q49 101 49 94V87H57V96Q57 101 64 101H72Q77 101 77 94V77"
-      class="body"
-    />
-    <path d="M25 44Q25 19 51 19Q78 19 80 45V77Q79 88 70 88H36Q25 88 25 77Z" class="body" />
-    <path
-      d="M31 45Q31 26 50 25Q69 24 72 38"
+      d="M36 45Q37 32 50 31"
       fill="none"
       stroke="#fff"
       stroke-opacity=".22"
       stroke-width="5"
       stroke-linecap="round"
     />
+    <rect x="33" y="44" width="34" height="24" rx="12" fill="#f2f8ff" stroke="#1b2941" stroke-width="3" />
+    <circle cx="43" cy="55" r="3.5" fill="#16283f" />
+    <circle cx="57" cy="55" r="3.5" fill="#16283f" />
     <path
-      d="M41 39Q45 34 66 35Q84 35 84 48V55Q83 65 65 66H48Q37 66 36 57V48Q36 42 41 39Z"
-      fill="#162a43"
-      stroke="#17243b"
-      stroke-width="4"
+      d="M46 61Q50 64.5 54 61"
+      fill="none"
+      stroke="#16283f"
+      stroke-width="2.5"
+      stroke-linecap="round"
     />
-    <path d="M42 43Q47 39 65 40Q77 40 78 47V52Q66 57 41 54Z" fill="#a6e4ec" />
-    <path d="M47 43H65" stroke="#e0fcff" stroke-width="4" stroke-linecap="round" />
-    <rect x="44" y="76" width="16" height="5" rx="2.5" fill="#fff" fill-opacity=".45" />
-    {#if variant === 'antenna'}<path d="M49 20L45 10" stroke="#17243b" stroke-width="4" /><circle
-        cx="44"
-        cy="8"
+    <rect x="44" y="76" width="12" height="6" rx="3" fill="#fff" fill-opacity=".45" />
+    {#if variant === 'antenna'}<path d="M50 30L46 14" stroke="#17243b" stroke-width="4" /><circle
+        cx="45"
+        cy="10"
         r="5"
         fill="#f9d083"
         stroke="#17243b"
         stroke-width="3"
       />{:else if variant === 'square'}<path
-        d="M35 21L39 13H66L70 23"
+        d="M37 31L41 21H59L63 31"
         fill="#4b5776"
         stroke="#17243b"
         stroke-width="3"
@@ -130,6 +131,9 @@
   }
   .avatar[data-icon='copilot'] {
     --suit: #a894ec;
+  }
+  .avatar[data-icon='neutral'] {
+    --suit: #f2c94c;
   }
   .active .crew {
     animation: think 1.8s ease-in-out infinite;

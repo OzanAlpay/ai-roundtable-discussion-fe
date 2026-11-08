@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { Catalog, DiscussionConfig, RunSnapshot } from '../domain/types'
   import { currentRound, readyCount, statusLabel } from '../domain/selectors'
+  import { modelColorKey } from '../domain/modelColor'
   import { getSeatLayout, participantIndexForChair, type SceneMode } from '../scene/getSeatLayout'
   import AgentSeat from './AgentSeat.svelte'
   import OfficeBackdrop from './OfficeBackdrop.svelte'
@@ -49,8 +50,8 @@
     return 'idle' as const
   })
 
-  function iconKey(providerId: string): string {
-    return catalog?.providers.find((p) => p.id === providerId)?.iconKey ?? 'neutral'
+  function iconKey(modelId: string): string {
+    return modelColorKey(catalog?.models.find((m) => m.id === modelId))
   }
   function providerName(participantId: string, providerId: string): string {
     return (
@@ -127,7 +128,7 @@
           roleLabel={p.roleLabel}
           providerName={providerName(p.id, p.providerId)}
           modelName={modelName(p.id, p.modelId)}
-          iconKey={iconKey(p.providerId)}
+          iconKey={iconKey(p.modelId)}
           accent={p.accent}
           variant={p.avatarVariant}
           statusText={snapshot?.excludedParticipantIds.includes(p.id)
